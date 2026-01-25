@@ -10,6 +10,7 @@ export interface ProjectConfig {
   createdAt: string;
   pkgManager: PackageManager;
   env?: Record<string, string>;
+  domains?: string[];
 }
 
 export interface ApiResponse<T = void> {

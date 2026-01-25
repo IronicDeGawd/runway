@@ -75,6 +75,9 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
     const projectDir = path.join(APPS_DIR, id);
     await fs.remove(projectDir);
 
+    // Update Caddy
+    await import('../services/caddyService').then(m => m.caddyService.updateConfig());
+
     logger.info(`Project ${id} deleted`);
     
     res.json({ success: true, message: 'Project deleted' });

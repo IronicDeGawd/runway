@@ -1,10 +1,11 @@
 import pm2 from 'pm2';
 import path from 'path';
 import fs from 'fs-extra';
+import util from 'util';
 import { ProjectConfig } from '@pdcp/shared';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
-import util from 'util';
+import { envService } from './envService';
 
 // Promisify PM2 methods
 const pm2Connect = util.promisify(pm2.connect);
@@ -17,26 +18,25 @@ const pm2List = util.promisify(pm2.list);
 
 const APPS_DIR = path.resolve(process.cwd(), '../apps');
 
-import { envService } from './envService';
-
-// ...
-
+export class PM2Service {
+  
   private async generateEcosystemConfig(project: ProjectConfig): Promise<any> {
     const projectDir = path.join(APPS_DIR, project.id);
     const envVars = await envService.getEnv(project.id);
     
-    // ... logic ...
-    
-    // Determine entry point validation reuse...
+    // Determine entry point
     let script = 'index.js';
     if (project.type === 'next') {
-      script = 'npm'; 
+      script = 'npm'; // For Next.js we usually run 'npm start'
     } else {
+      // For Node, check package.json "main" or "scripts.start"
+      // We'll assume npm start for simplicity or try to find main.
+      // But 'npm start' is safest if defined.
       script = 'npm';
     }
 
     return {
-      name: project.id,
+      name: project.id, // Use ID as PM2 name for uniqueness
       cwd: projectDir,
       script: script,
       args: script === 'npm' ? 'start' : [],
@@ -45,6 +45,7 @@ import { envService } from './envService';
         NODE_ENV: 'production',
         ...envVars,
       },
+      // Logs
       output: path.join(projectDir, 'logs', 'out.log'),
       error: path.join(projectDir, 'logs', 'error.log'),
       merge_logs: true,
@@ -59,6 +60,7 @@ import { envService } from './envService';
 
     logger.info(`Starting project ${project.name} (${project.id}) on port ${project.port}`);
 
+    // Ensure log directory exists
     await fs.ensureDir(path.join(APPS_DIR, project.id, 'logs'));
 
     const config = await this.generateEcosystemConfig(project);
@@ -66,6 +68,7 @@ import { envService } from './envService';
     try {
       await pm2Connect();
       
+      // Check if already running?
       const list = await pm2List();
       const exists = list.find((p: any) => p.name === project.id);
 
