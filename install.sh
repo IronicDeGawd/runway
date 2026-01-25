@@ -232,19 +232,15 @@ UI_DIST="$INSTALL_DIR/ui/dist"
 
 log_info "Generating Caddyfile..."
 cat > "$INSTALL_DIR/data/Caddyfile" << 'EOF'
-{
-    admin off
-}
-
 # Control Plane UI
 :80 {
-    root * /opt/pdcp/ui/dist
-    file_server
-    try_files {path} /index.html
-
     handle /api/* {
         reverse_proxy 127.0.0.1:3000
     }
+
+    root * /opt/pdcp/ui/dist
+    try_files {path} /index.html
+    file_server
 }
 EOF
 
