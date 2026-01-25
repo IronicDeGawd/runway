@@ -6,27 +6,18 @@ import { errorHandler } from './middleware/errorHandler';
 import { authRouter } from './routes/auth';
 import { deploymentRouter } from './routes/deploy';
 import { processRouter } from './routes/process';
+import { envRouter } from './routes/env';
 import { initWebSocket } from './websocket';
 import { createServer } from 'http';
 import { pm2Service } from './services/pm2Service';
-import { projectRegistry } from './services/projectRegistry';
 
-const app = express();
-const httpServer = createServer(app);
-const port = parseInt(process.env.PORT || '3000', 10);
-
-app.use(express.json());
-
-// Request logging
-app.use((req, res, next) => {
-  logger.info(`${req.method} ${req.url}`);
-  next();
-});
+// ...
 
 // API Routes
 app.use('/api/auth', authRouter);
 app.use('/api/project', deploymentRouter);
 app.use('/api/process', processRouter);
+app.use('/api/env', envRouter);
 
 // Health check
 app.get('/health', (req, res) => {

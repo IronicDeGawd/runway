@@ -43,15 +43,23 @@ export class DeploymentService {
     }
   }
 
-  private async buildProject(dir: string, manager: PackageManager): Promise<void> {
-    // Check if build script exists
+import { envService } from './envService';
+
+// ...
+
+  private async buildProject(dir: string, manager: PackageManager, projectId: string): Promise<void> {
     try {
       const pkgJsonPath = path.join(dir, 'package.json');
       const pkgJson = await fs.readJson(pkgJsonPath);
       
       if (pkgJson.scripts && pkgJson.scripts.build) {
         logger.info(`Building project in ${dir}`);
-        await execAsync(`${manager} run build`, { cwd: dir });
+        const envVars = await envService.getEnv(projectId);
+        
+        await execAsync(`${manager} run build`, { 
+          cwd: dir, 
+          env: { ...process.env, ...envVars } 
+        });
       } else {
         logger.info('No build script found, skipping build');
       }
@@ -84,10 +92,33 @@ export class DeploymentService {
       await this.installDependencies(stagingDir, pkgManager);
 
       // 5. Build (if required)
-      // Frontend (React) always needs build? Plan says "Build (if required)".
-      // Type is passed in.
       if (type === 'react' || type === 'next') {
-        await this.buildProject(stagingDir, pkgManager);
+        // Need to pass projectId to buildProject for ENV loading.
+        // But projectId is generated later in step 6?
+        // Wait, "Allocating Port" step 6 checks project, but we might be updating.
+        // We really should know the projectId BEFORE building if we want to load stored ENVs.
+        // If it's a new project, are there stored ENVs? No.
+        // If it's an update, yes.
+        
+        // We should determine projectId EARLIER.
+        // Step 6 moved up or projectId detection logic duplicated.
+        
+        let existingProject = (await projectRegistry.getAll()).find(p => p.name === projectName);
+        let pid = existingProject ? existingProject.id : null; // If null, no stored ENVs yet.
+
+        // If new project, PID is random, but we haven't saved it or ENVs yet.
+        // So envs are empty.
+        // If we want build-time ENVs for NEW projects, we need to allow setting ENVs before deploy?
+        // Or deploy fails/builds without ENVs, then user sets ENVs, then rebuilds.
+        // "Frontend ENV changes require rebuild".
+        // Typical flow: Deploy -> Set ENVs -> Rebuild.
+        
+        if (pid) {
+           await this.buildProject(stagingDir, pkgManager, pid);
+        } else {
+           // No ENVs for new project build
+           await this.buildProject(stagingDir, pkgManager, 'new-project-placeholder');
+        }
       }
 
       // 6. Allocate Port (if new)

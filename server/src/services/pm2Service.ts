@@ -17,33 +17,34 @@ const pm2List = util.promisify(pm2.list);
 
 const APPS_DIR = path.resolve(process.cwd(), '../apps');
 
-export class PM2Service {
-  
-  private generateEcosystemConfig(project: ProjectConfig): any {
+import { envService } from './envService';
+
+// ...
+
+  private async generateEcosystemConfig(project: ProjectConfig): Promise<any> {
     const projectDir = path.join(APPS_DIR, project.id);
+    const envVars = await envService.getEnv(project.id);
     
-    // Determine entry point
+    // ... logic ...
+    
+    // Determine entry point validation reuse...
     let script = 'index.js';
     if (project.type === 'next') {
-      script = 'npm'; // For Next.js we usually run 'npm start'
+      script = 'npm'; 
     } else {
-      // For Node, check package.json "main" or "scripts.start"
-      // We'll assume npm start for simplicity or try to find main.
-      // But 'npm start' is safest if defined.
       script = 'npm';
     }
 
     return {
-      name: project.id, // Use ID as PM2 name for uniqueness
+      name: project.id,
       cwd: projectDir,
       script: script,
       args: script === 'npm' ? 'start' : [],
       env: {
         PORT: project.port,
         NODE_ENV: 'production',
-        ...project.env, // Inject project ENVs
+        ...envVars,
       },
-      // Logs
       output: path.join(projectDir, 'logs', 'out.log'),
       error: path.join(projectDir, 'logs', 'error.log'),
       merge_logs: true,
@@ -58,15 +59,13 @@ export class PM2Service {
 
     logger.info(`Starting project ${project.name} (${project.id}) on port ${project.port}`);
 
-    // Ensure log directory exists
     await fs.ensureDir(path.join(APPS_DIR, project.id, 'logs'));
 
-    const config = this.generateEcosystemConfig(project);
+    const config = await this.generateEcosystemConfig(project);
 
     try {
       await pm2Connect();
       
-      // Check if already running?
       const list = await pm2List();
       const exists = list.find((p: any) => p.name === project.id);
 
