@@ -11,7 +11,6 @@ import {
   Terminal as TerminalIcon,
   Settings,
   Key,
-  Clock,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/pdcp/DashboardLayout";
 import { PanelCard, PanelCardHeader, PanelCardTitle, PanelCardContent } from "@/components/pdcp/PanelCard";
@@ -21,65 +20,24 @@ import { Terminal, EnvRow } from "@/components/pdcp/Terminal";
 import { ConfirmDialog } from "@/components/pdcp/Overlays";
 import { Skeleton, Spinner } from "@/components/pdcp/ProgressElements";
 import { useProjectsMock } from "@/hooks/useProjectsMock";
+import { useProjectEnv } from "@/hooks/useProjectEnv";
+import { useProjectLogs } from "@/hooks/useProjectLogs";
 import { cn } from "@/lib/utils";
 
 type Tab = "control" | "logs" | "env" | "settings";
 
-const mockLogs = [
-  "[INFO] Server starting on port 3000...",
-  "[INFO] Database connection established",
-  "[INFO] Redis cache connected",
-  "[INFO] Loading routes...",
-  "[INFO] GET /api/health -> 200 (2ms)",
-  "[INFO] GET /api/users -> 200 (15ms)",
-  "[DEBUG] Cache hit for user:123",
-  "[INFO] POST /api/auth/login -> 200 (45ms)",
-  "[INFO] GET /api/projects -> 200 (22ms)",
-  "[WARN] Rate limit approaching for IP 192.168.1.1",
-  "[INFO] GET /api/metrics -> 200 (8ms)",
-];
-
-const mockEnvVars = [
-  { name: "DATABASE_URL", value: "postgresql://user:pass@localhost:5432/db" },
-  { name: "REDIS_URL", value: "redis://localhost:6379" },
-  { name: "API_KEY", value: "sk_live_abc123def456" },
-  { name: "NODE_ENV", value: "production" },
-  { name: "PORT", value: "3000" },
-];
-
 export default function ProjectDetailsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { projects, isLoading, startProject, stopProject, restartProject, deleteProject, getProject } = useProjectsMock();
+  const { isLoading, startProject, stopProject, restartProject, deleteProject, getProject } = useProjectsMock();
   const [activeTab, setActiveTab] = React.useState<Tab>("control");
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
-  const [logs, setLogs] = React.useState<string[]>([]);
-  const [isStreaming, setIsStreaming] = React.useState(false);
 
   const project = getProject(id || "");
 
-  // Simulate log streaming
-  React.useEffect(() => {
-    if (activeTab === "logs" && project?.status === "running") {
-      setIsStreaming(true);
-      let index = 0;
-      const interval = setInterval(() => {
-        if (index < mockLogs.length) {
-          setLogs((prev) => [...prev, mockLogs[index]]);
-          index++;
-        } else {
-          // Loop with new timestamps
-          const randomLog = mockLogs[Math.floor(Math.random() * mockLogs.length)];
-          setLogs((prev) => [...prev.slice(-50), randomLog]);
-        }
-      }, 800);
-
-      return () => {
-        clearInterval(interval);
-        setIsStreaming(false);
-      };
-    }
-  }, [activeTab, project?.status]);
+  // Real Hooks
+  const { envVars, isLoading: envLoading } = useProjectEnv(id);
+  const { logs, isConnected, clearLogs } = useProjectLogs(id, activeTab === "logs");
 
   const handleDelete = () => {
     if (project) {
@@ -219,24 +177,24 @@ export default function ProjectDetailsPage() {
                 <PanelCardContent className="space-y-4">
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">CPU</span>
-                    <span className="text-text-primary font-medium">{project.cpu}%</span>
+                    <span className="text-text-primary font-medium">{project.cpu || 0}%</span>
                   </div>
                   <div className="h-2 bg-panel-border rounded-full overflow-hidden">
                     <motion.div
                       className="h-full bg-accent-primary"
                       initial={{ width: 0 }}
-                      animate={{ width: `${project.cpu}%` }}
+                      animate={{ width: `${project.cpu || 0}%` }}
                     />
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-text-muted">Memory</span>
-                    <span className="text-text-primary font-medium">{project.memory}MB</span>
+                    <span className="text-text-primary font-medium">{project.memory || 0}MB</span>
                   </div>
                   <div className="h-2 bg-panel-border rounded-full overflow-hidden">
                     <motion.div
                       className="h-full bg-status-building"
                       initial={{ width: 0 }}
-                      animate={{ width: `${(project.memory / 512) * 100}%` }}
+                      animate={{ width: `${Math.min(((project.memory || 0) / 1024) * 100, 100)}%` }}
                     />
                   </div>
                 </PanelCardContent>
@@ -273,18 +231,19 @@ export default function ProjectDetailsPage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  {isStreaming && (
+                  {isConnected && (
                     <>
-                      <Spinner size="sm" />
-                      <span className="text-sm text-text-muted">Streaming logs...</span>
+                      <div className="w-2 h-2 rounded-full bg-status-running animate-pulse" />
+                      <span className="text-sm text-text-muted">Live</span>
                     </>
                   )}
+                  {!isConnected && <span className="text-sm text-text-muted">Connecting...</span>}
                 </div>
-                <PDCPButton variant="secondary" size="sm" onClick={() => setLogs([])}>
+                <PDCPButton variant="secondary" size="sm" onClick={clearLogs}>
                   Clear
                 </PDCPButton>
               </div>
-              <Terminal logs={logs} maxHeight="500px" streaming={isStreaming} />
+              <Terminal logs={logs} maxHeight="500px" streaming={isConnected} />
             </div>
           )}
 
@@ -297,16 +256,18 @@ export default function ProjectDetailsPage() {
                 </PDCPButton>
               </PanelCardHeader>
               <PanelCardContent className="space-y-2">
-                {mockEnvVars.map((env) => (
-                  <EnvRow
-                    key={env.name}
-                    name={env.name}
-                    value={env.value}
-                    masked
-                    onEdit={() => {}}
-                    onDelete={() => {}}
-                  />
-                ))}
+                {envLoading ? <Skeleton className="h-20" /> : (
+                  envVars?.map((env) => (
+                    <EnvRow
+                      key={env.name}
+                      name={env.name}
+                      value={env.value}
+                      masked
+                      onEdit={() => { }}
+                      onDelete={() => { }}
+                    />
+                  )))}
+                {envVars?.length === 0 && <p className="text-sm text-text-muted">No environment variables set.</p>}
               </PanelCardContent>
             </PanelCard>
           )}
