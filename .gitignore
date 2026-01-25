@@ -4,3 +4,11 @@ dist
 build
 .env
 *.log
+
+# Deployment scripts with credentials
+deploy.sh
+
+# Plan and documentation files
+IMPLEMENTATION_PLAN.md
+Tech.md
+plan.md
