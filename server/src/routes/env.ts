@@ -5,6 +5,7 @@ import { validateRequest } from '../middleware/validateRequest';
 import { envService } from '../services/envService';
 import { projectRegistry } from '../services/projectRegistry';
 import { AppError } from '../middleware/errorHandler';
+import { activityLogger } from '../services/activityLogger';
 
 const router = Router();
 
@@ -35,10 +36,27 @@ router.post('/:id', requireAuth, validateRequest(EnvUpdateSchema), async (req, r
 
     await envService.saveEnv(req.params.id, req.body.env);
     
-    // Note: Plan says "Backend ENV changes require restart".
-    // We don't auto-restart here. UI should prompt or separate action.
+    // Log activity
+    await activityLogger.log('config', project.name, 'Environment variables updated');
     
-    res.json({ success: true, message: 'Environment variables updated' });
+    // Determine required action based on project type
+    let actionRequired: 'restart' | 'rebuild' | 'none' = 'none';
+    if (project.type === 'react') {
+      actionRequired = 'rebuild'; // Frontend needs rebuild
+    } else if (project.type === 'next' || project.type === 'node') {
+      actionRequired = 'restart'; // Backend needs restart
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Environment variables updated',
+      actionRequired,
+      actionMessage: actionRequired === 'rebuild' 
+        ? 'Frontend ENV changed - redeploy to apply' 
+        : actionRequired === 'restart'
+        ? 'Backend ENV changed - restart to apply'
+        : null
+    });
   } catch (error) {
     next(error);
   }
