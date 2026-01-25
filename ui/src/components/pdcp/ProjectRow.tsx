@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Play, Square, RotateCw, ExternalLink, MoreVertical } from "lucide-react";
 import { StatusPill, RuntimeBadge } from "./StatusPill";
 import { Link } from "react-router-dom";
-import type { Project } from "@/hooks/useProjectsMock";
+import type { Project } from "@/hooks/useProjects";
 
 interface ProjectRowProps {
   project: Project;

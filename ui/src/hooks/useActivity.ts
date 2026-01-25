@@ -9,7 +9,7 @@ export interface ActivityItem {
   timestamp: string;
 }
 
-export function useActivityMock() {
+export function useActivity() {
   const { data: activity, isLoading } = useQuery({
     queryKey: ['activity'],
     queryFn: async () => {

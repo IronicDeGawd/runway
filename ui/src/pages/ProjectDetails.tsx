@@ -19,7 +19,7 @@ import { PDCPButton, IconButton } from "@/components/pdcp/PDCPButton";
 import { Terminal, EnvRow } from "@/components/pdcp/Terminal";
 import { ConfirmDialog } from "@/components/pdcp/Overlays";
 import { Skeleton, Spinner } from "@/components/pdcp/ProgressElements";
-import { useProjectsMock } from "@/hooks/useProjectsMock";
+import { useProjects } from "@/hooks/useProjects";
 import { useProjectEnv } from "@/hooks/useProjectEnv";
 import { useProjectLogs } from "@/hooks/useProjectLogs";
 import { cn } from "@/lib/utils";
@@ -29,7 +29,7 @@ type Tab = "control" | "logs" | "env" | "settings";
 export default function ProjectDetailsPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isLoading, startProject, stopProject, restartProject, deleteProject, getProject } = useProjectsMock();
+  const { isLoading, startProject, stopProject, restartProject, deleteProject, getProject } = useProjects();
   const [activeTab, setActiveTab] = React.useState<Tab>("control");
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
 

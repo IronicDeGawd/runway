@@ -21,8 +21,8 @@ import { ActivityItem } from "@/components/pdcp/ActivityItem";
 import { PDCPButton } from "@/components/pdcp/PDCPButton";
 import { Skeleton } from "@/components/pdcp/ProgressElements";
 import { useSystemMetrics } from "@/hooks/useSystemMetrics";
-import { useProjectsMock } from "@/hooks/useProjectsMock";
-import { useActivityMock, formatTimeAgo } from "@/hooks/useActivityMock";
+import { useProjects } from "@/hooks/useProjects";
+import { useActivity, formatTimeAgo } from "@/hooks/useActivity";
 import { cn } from "@/lib/utils";
 
 // Hero metric card for secondary stats - MUCH larger numbers
@@ -99,8 +99,8 @@ function HeroMetric({
 
 export default function OverviewPage() {
   const { metrics, history, isLoading: metricsLoading } = useSystemMetrics();
-  const { projects, isLoading: projectsLoading, startProject, stopProject, restartProject } = useProjectsMock();
-  const { activity, isLoading: activityLoading } = useActivityMock();
+  const { projects, isLoading: projectsLoading, startProject, stopProject, restartProject } = useProjects();
+  const { activity, isLoading: activityLoading } = useActivity();
 
   const runningProjects = projects.filter((p) => p.status === "running").length;
   const stoppedProjects = projects.filter((p) => p.status === "stopped").length;
