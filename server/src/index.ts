@@ -12,6 +12,7 @@ import { processRouter } from './routes/process';
 import { envRouter } from './routes/env';
 import { servicesRouter } from './routes/services';
 import { metricsRouter } from './routes/metrics';
+import { activityRouter } from './routes/activity';
 import { initWebSocket } from './websocket';
 import { pm2Service } from './services/pm2Service';
 
@@ -35,6 +36,7 @@ app.use('/api/process', processRouter);
 app.use('/api/env', envRouter);
 app.use('/api/services', servicesRouter);
 app.use('/api/metrics', metricsRouter);
+app.use('/api/activity', activityRouter);
 
 // Health check
 app.get('/health', (req, res) => {

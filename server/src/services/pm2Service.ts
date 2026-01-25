@@ -6,6 +6,8 @@ import { ProjectConfig } from '@pdcp/shared';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { envService } from './envService';
+import { activityLogger } from './activityLogger';
+import { projectRegistry } from './projectRegistry';
 
 // Promisify PM2 methods
 const pm2Connect = util.promisify(pm2.connect);
@@ -77,6 +79,9 @@ export class PM2Service {
       }
 
       await pm2Start(config);
+      
+      // Log activity
+      await activityLogger.log('start', project.name, 'Service started');
     } catch (error) {
       logger.error('PM2 start failed', error);
       throw new AppError('Failed to start process', 500);
@@ -89,6 +94,12 @@ export class PM2Service {
     try {
       await pm2Connect();
       await pm2Stop(projectId);
+      
+      // Log activity
+      const project = await projectRegistry.getById(projectId);
+      if (project) {
+        await activityLogger.log('stop', project.name, 'Service stopped');
+      }
     } catch (error) {
       // Ignore if not found
       logger.warn(`Failed to stop ${projectId}`, error);
@@ -112,6 +123,13 @@ export class PM2Service {
   async deleteProject(projectId: string): Promise<void> {
     try {
       await pm2Connect();
+      
+      // Log activity before deleting
+      const project = await projectRegistry.getById(projectId);
+      if (project) {
+        await activityLogger.log('delete', project.name, 'Project deleted');
+      }
+      
       await pm2Delete(projectId);
     } catch (error) {
       logger.warn(`Failed to delete process ${projectId}`, error);
