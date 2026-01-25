@@ -3,6 +3,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import lockfile from 'proper-lockfile';
 import { logger } from '../utils/logger';
+import { eventBus } from '../events/eventBus';
 
 const DATA_DIR = path.resolve(process.cwd(), '../data');
 const ACTIVITY_FILE = path.join(DATA_DIR, 'activity.json');
@@ -53,6 +54,9 @@ class ActivityLogger {
 
         await fs.writeFile(ACTIVITY_FILE, JSON.stringify(activities, null, 2));
         logger.info(`Activity logged: ${type} - ${projectName}`);
+        
+        // Emit event for realtime updates
+        eventBus.emitEvent('activity:new', activity);
       } finally {
         await release();
       }

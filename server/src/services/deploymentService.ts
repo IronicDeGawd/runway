@@ -12,6 +12,7 @@ import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { envService } from './envService';
 import { activityLogger } from './activityLogger';
+import { eventBus } from '../events/eventBus';
 
 const execAsync = util.promisify(exec);
 
@@ -142,6 +143,13 @@ export class DeploymentService {
       // Log activity
       await activityLogger.log('deploy', projectName, 
         `Deployed ${projectName} (${type}) successfully`);
+      
+      // Emit event for realtime updates
+      eventBus.emitEvent('project:change', {
+        action: project ? 'updated' : 'created',
+        projectId,
+        project: newConfig
+      });
       
       // Cleanup uploaded file
       await fs.remove(filePath);

@@ -8,6 +8,7 @@ import { AppError } from '../middleware/errorHandler';
 import { envService } from './envService';
 import { activityLogger } from './activityLogger';
 import { projectRegistry } from './projectRegistry';
+import { eventBus } from '../events/eventBus';
 
 // Promisify PM2 methods
 const pm2Connect = util.promisify(pm2.connect);
@@ -82,8 +83,21 @@ export class PM2Service {
       
       // Log activity
       await activityLogger.log('start', project.name, 'Service started');
+      
+      // Emit event for realtime updates
+      eventBus.emitEvent('process:change', {
+        projectId: project.id,
+        status: 'running'
+      });
     } catch (error) {
       logger.error('PM2 start failed', error);
+      
+      // Emit failed status
+      eventBus.emitEvent('process:change', {
+        projectId: project.id,
+        status: 'failed'
+      });
+      
       throw new AppError('Failed to start process', 500);
     } finally {
       pm2.disconnect();
@@ -100,6 +114,12 @@ export class PM2Service {
       if (project) {
         await activityLogger.log('stop', project.name, 'Service stopped');
       }
+      
+      // Emit event for realtime updates
+      eventBus.emitEvent('process:change', {
+        projectId,
+        status: 'stopped'
+      });
     } catch (error) {
       // Ignore if not found
       logger.warn(`Failed to stop ${projectId}`, error);
@@ -112,8 +132,21 @@ export class PM2Service {
     try {
       await pm2Connect();
       await pm2Restart(projectId);
+      
+      // Emit event for realtime updates
+      eventBus.emitEvent('process:change', {
+        projectId,
+        status: 'running'
+      });
     } catch (error) {
       logger.error(`Failed to restart ${projectId}`, error);
+      
+      // Emit failed status
+      eventBus.emitEvent('process:change', {
+        projectId,
+        status: 'failed'
+      });
+      
       throw new AppError('Failed to restart process', 500);
     } finally {
       pm2.disconnect();

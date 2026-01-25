@@ -6,14 +6,9 @@ import { validateRequest } from '../middleware/validateRequest';
 import { pm2Service } from '../services/pm2Service';
 import { projectRegistry } from '../services/projectRegistry';
 import { AppError } from '../middleware/errorHandler';
-import { deploymentService } from '../services/deploymentService'; // For delete?
-// Or we should put delete logic in projectRegistry/deploymentService? 
-// process.ts should focus on process control. Delete project involves removing files, etc.
-// Phase 3 calls it "Process Control".
-// But Phase 2 "Deployment Service" handles files.
-// Let's instantiate deletion logic here or in deploymentService. 
-// Ideally deploymentService handles the Project lifecycle.
+import { deploymentService } from '../services/deploymentService';
 import { logger } from '../utils/logger';
+import { eventBus } from '../events/eventBus';
 import fs from 'fs-extra';
 import path from 'path';
 
@@ -89,6 +84,12 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
     await import('../services/caddyService').then(m => m.caddyService.updateConfig());
 
     logger.info(`Project ${id} deleted`);
+    
+    // Emit event for realtime updates
+    eventBus.emitEvent('project:change', {
+      action: 'deleted',
+      projectId: id
+    });
     
     res.json({ success: true, message: 'Project deleted' });
   } catch (error) {

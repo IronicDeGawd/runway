@@ -4,6 +4,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
+import { eventBus } from '../events/eventBus';
 
 const execAsync = util.promisify(exec);
 const DATA_DIR = path.resolve(process.cwd(), '../data');
@@ -157,8 +158,21 @@ volumes:
 
     try {
         await execAsync(`docker compose -f ${COMPOSE_FILE} up -d ${type}`);
+        
+        // Emit event for realtime updates
+        eventBus.emitEvent('service:change', {
+          type,
+          status: 'running'
+        });
     } catch (error) {
         logger.error(`Failed to start ${type}`, error);
+        
+        // Emit error status
+        eventBus.emitEvent('service:change', {
+          type,
+          status: 'error'
+        });
+        
         throw new AppError(`Failed to start ${type}`, 500);
     }
   }
@@ -168,8 +182,21 @@ volumes:
     
     try {
         await execAsync(`docker compose -f ${COMPOSE_FILE} stop ${type}`);
+        
+        // Emit event for realtime updates
+        eventBus.emitEvent('service:change', {
+          type,
+          status: 'stopped'
+        });
     } catch (error) {
         logger.error(`Failed to stop ${type}`, error);
+        
+        // Emit error status
+        eventBus.emitEvent('service:change', {
+          type,
+          status: 'error'
+        });
+        
         throw new AppError(`Failed to stop ${type}`, 500);
     }
   }
