@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { io, Socket } from 'socket.io-client';
 
 export function useProjectLogs(projectId: string | undefined, active: boolean) {
     const [logs, setLogs] = useState<string[]>([]);
@@ -8,29 +7,35 @@ export function useProjectLogs(projectId: string | undefined, active: boolean) {
     useEffect(() => {
         if (!projectId || !active) return;
 
-        // Connect to namespace
-        const socket: Socket = io('/logs', {
-             path: '/socket.io',
-             transports: ['websocket'],
-        });
+        const token = localStorage.getItem('token');
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/api/logs?token=${token}`;
+        
+        const ws = new WebSocket(wsUrl);
 
-        socket.on('connect', () => {
+        ws.onopen = () => {
             setIsConnected(true);
-            socket.emit('subscribe', projectId);
-        });
+            ws.send(JSON.stringify({ action: 'subscribe', projectId }));
+        };
 
-        socket.on('disconnect', () => {
+        ws.onclose = () => {
             setIsConnected(false);
-        });
+        };
 
-        socket.on('log', (data: { projectId: string, log: string }) => {
-            if (data.projectId === projectId) {
+        ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'log' && data.projectId === projectId) {
                 setLogs(prev => [...prev, data.log]);
             }
-        });
+        };
+
+        ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            setIsConnected(false);
+        };
 
         return () => {
-            socket.disconnect();
+            ws.close();
         };
     }, [projectId, active]);
 

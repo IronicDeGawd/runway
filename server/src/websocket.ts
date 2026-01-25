@@ -82,17 +82,21 @@ export const initWebSocket = (server: HttpServer) => {
 };
 
 const broadcastLog = (wss: WebSocketServer, type: 'stdout' | 'stderr', packet: any) => {
-  const processName = packet.process.name;
-  const data = packet.data;
+  const projectId = packet.process?.name;
+  if (!projectId) return;
+
+  const message = JSON.stringify({
+    type: 'log',
+    projectId,
+    log: packet.data,
+    stream: type,
+    timestamp: new Date().toISOString()
+  });
 
   wss.clients.forEach((client) => {
-    const ws = client as ExtendedWebSocket;
-    if (ws.readyState === WebSocket.OPEN && ws.projectId === processName) {
-      ws.send(JSON.stringify({
-        type,
-        timestamp: new Date().toISOString(),
-        data,
-      }));
+    const extClient = client as ExtendedWebSocket;
+    if (client.readyState === WebSocket.OPEN && extClient.projectId === projectId) {
+      client.send(message);
     }
   });
 };
