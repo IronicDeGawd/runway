@@ -4,6 +4,7 @@ import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 
 import { authRouter } from './routes/auth';
+import { deploymentRouter } from './routes/deploy';
 
 const app = express();
 const port = parseInt(process.env.PORT || '3000', 10);
@@ -18,6 +19,7 @@ app.use((req, res, next) => {
 
 // API Routes
 app.use('/api/auth', authRouter);
+app.use('/api/project', deploymentRouter);
 
 // Health check
 app.get('/health', (req, res) => {
