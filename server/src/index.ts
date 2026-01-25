@@ -3,6 +3,8 @@ import pino from 'pino';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
 
+import { authRouter } from './routes/auth';
+
 const app = express();
 const port = parseInt(process.env.PORT || '3000', 10);
 
@@ -13,6 +15,9 @@ app.use((req, res, next) => {
   logger.info(`${req.method} ${req.url}`);
   next();
 });
+
+// API Routes
+app.use('/api/auth', authRouter);
 
 // Health check
 app.get('/health', (req, res) => {
