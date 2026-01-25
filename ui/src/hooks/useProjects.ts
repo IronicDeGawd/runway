@@ -1,11 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api, ProjectsResponse, ProcessStatus } from '@/lib/api';
-import { ProjectConfig, ProjectType } from '@pdcp/shared';
+import { ProjectConfig, ProjectType, ProcessStatus as SharedProcessStatus } from '@pdcp/shared';
 import { toast } from 'sonner';
 
 // Extended Project interface with runtime status
 export interface Project extends Omit<ProjectConfig, 'createdAt'> {
-    status: 'running' | 'stopped' | 'failed' | 'building' | 'online';
+    status: SharedProcessStatus;
     memory?: number;
     cpu?: number;
     uptime?: number;
