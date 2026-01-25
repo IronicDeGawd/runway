@@ -15,7 +15,7 @@ export interface Project extends Omit<ProjectConfig, 'createdAt'> {
     lastDeployed: Date;
 }
 
-export function useProjectsMock() { // Renaming to useProjects later, but keeping interface combatibility for now
+export function useProjects() {
     const queryClient = useQueryClient();
 
     // Fetch Projects

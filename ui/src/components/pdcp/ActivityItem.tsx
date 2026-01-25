@@ -2,7 +2,7 @@ import * as React from "react";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Rocket, Play, Square, AlertTriangle, Settings } from "lucide-react";
-import type { ActivityItem as Activity } from "@/hooks/useActivityMock";
+import type { ActivityItem as Activity } from "@/hooks/useActivity";
 
 interface ActivityItemProps {
   activity: Activity;

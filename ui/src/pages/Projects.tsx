@@ -20,13 +20,13 @@ import { PDCPButton, IconButton } from "@/components/pdcp/PDCPButton";
 import { PDCPInput } from "@/components/pdcp/FormControls";
 import { Skeleton } from "@/components/pdcp/ProgressElements";
 import { ConfirmDialog } from "@/components/pdcp/Overlays";
-import { useProjectsMock, Project } from "@/hooks/useProjectsMock";
+import { useProjects, Project } from "@/hooks/useProjects";
 import { cn } from "@/lib/utils";
 
 type StatusFilter = "all" | "running" | "stopped" | "building";
 
 export default function ProjectsPage() {
-  const { projects, isLoading, startProject, stopProject, restartProject, deleteProject } = useProjectsMock();
+  const { projects, isLoading, startProject, stopProject, restartProject, deleteProject } = useProjects();
   const [searchQuery, setSearchQuery] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<StatusFilter>("all");
   const [deleteTarget, setDeleteTarget] = React.useState<Project | null>(null);

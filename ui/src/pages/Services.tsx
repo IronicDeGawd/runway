@@ -17,7 +17,7 @@ import { CutoutPanel } from "@/components/pdcp/CutoutPanel";
 import { StatusPill } from "@/components/pdcp/StatusPill";
 import { PDCPButton, IconButton } from "@/components/pdcp/PDCPButton";
 import { Skeleton } from "@/components/pdcp/ProgressElements";
-import { useServicesMock, Service } from "@/hooks/useServicesMock";
+import { useServices, Service } from "@/hooks/useServices";
 import { cn } from "@/lib/utils";
 
 function ServiceCard({ service, onStart, onStop }: { service: Service; onStart: () => void; onStop: () => void }) {
@@ -118,7 +118,7 @@ function ServiceCard({ service, onStart, onStop }: { service: Service; onStart: 
 }
 
 export default function ServicesPage() {
-  const { services, isLoading, startService, stopService } = useServicesMock();
+  const { services, isLoading, startService, stopService } = useServices();
 
   return (
     <DashboardLayout>

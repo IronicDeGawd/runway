@@ -11,7 +11,7 @@ export interface DeployState {
   error?: string;
 }
 
-export function useDeployFlowMock() {
+export function useDeployFlow() {
   const [state, setState] = React.useState<DeployState>({
     step: "upload",
     progress: 0,

@@ -19,7 +19,7 @@ import { PDCPInput, FormField } from "@/components/pdcp/FormControls";
 import { ProgressStepper, ProgressBar, Spinner } from "@/components/pdcp/ProgressElements";
 import { Terminal } from "@/components/pdcp/Terminal";
 import { StatusPill } from "@/components/pdcp/StatusPill";
-import { useDeployFlowMock, DeployStep } from "@/hooks/useDeployFlowMock";
+import { useDeployFlow, DeployStep } from "@/hooks/useDeployFlow";
 import { cn } from "@/lib/utils";
 
 const runtimes = [
@@ -38,7 +38,7 @@ const steps = [
 
 export default function DeployPage() {
   const navigate = useNavigate();
-  const { state, isDeploying, startDeploy, confirmConfig, reset } = useDeployFlowMock();
+  const { state, isDeploying, startDeploy, confirmConfig, reset } = useDeployFlow();
   const [selectedRuntime, setSelectedRuntime] = React.useState("node");
   const [projectName, setProjectName] = React.useState("");
   const [dragOver, setDragOver] = React.useState(false);
