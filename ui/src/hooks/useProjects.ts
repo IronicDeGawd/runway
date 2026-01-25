@@ -1,7 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { api, ProjectsResponse, ProcessStatus } from '@/lib/api';
 import { ProjectConfig, ProjectType, ProcessStatus as SharedProcessStatus } from '@pdcp/shared';
 import { toast } from 'sonner';
+import { useWebSocket } from '@/contexts/WebSocketContext';
 
 // Extended Project interface with runtime status
 export interface Project extends Omit<ProjectConfig, 'createdAt'> {
@@ -17,6 +19,7 @@ export interface Project extends Omit<ProjectConfig, 'createdAt'> {
 
 export function useProjects() {
     const queryClient = useQueryClient();
+    const { subscribe, on, off } = useWebSocket();
 
     // Fetch Projects
     const { data: projectsData, isLoading: projectsLoading } = useQuery({
@@ -25,7 +28,7 @@ export function useProjects() {
             const res = await api.get<ProjectsResponse>('/project');
             return res.data.data;
         },
-        refetchInterval: 5000,
+        staleTime: 10000,
     });
 
     // Fetch Processes Status
@@ -35,8 +38,30 @@ export function useProjects() {
              const res = await api.get<{success: boolean, data: ProcessStatus[]}>('/process');
              return res.data.data;
         },
-        refetchInterval: 2000,
+        staleTime: 5000,
     });
+
+    // Subscribe to WebSocket updates
+    useEffect(() => {
+        subscribe(['processes', 'projects']);
+
+        const handleProcessChange = () => {
+            queryClient.invalidateQueries({ queryKey: ['processes'] });
+        };
+
+        const handleProjectChange = () => {
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+            queryClient.invalidateQueries({ queryKey: ['processes'] });
+        };
+
+        on('process:change', handleProcessChange);
+        on('project:change', handleProjectChange);
+
+        return () => {
+            off('process:change', handleProcessChange);
+            off('project:change', handleProjectChange);
+        };
+    }, [subscribe, on, off, queryClient]);
 
     // Merge Data
     const projects: Project[] = (projectsData || []).map(p => {

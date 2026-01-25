@@ -1,5 +1,7 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { api } from '@/lib/api';
+import { useWebSocket } from '@/contexts/WebSocketContext';
 
 export interface ActivityItem {
   id: string;
@@ -10,14 +12,35 @@ export interface ActivityItem {
 }
 
 export function useActivity() {
+  const queryClient = useQueryClient();
+  const { subscribe, on, off } = useWebSocket();
+
   const { data: activity, isLoading } = useQuery({
     queryKey: ['activity'],
     queryFn: async () => {
       const res = await api.get<{success: boolean, data: ActivityItem[]}>('/activity');
       return res.data.data;
     },
-    refetchInterval: 10000, // Refresh every 10 seconds
+    staleTime: 30000,
   });
+
+  // Subscribe to WebSocket updates
+  useEffect(() => {
+    subscribe(['activity']);
+
+    const handleActivityNew = (newActivity: ActivityItem) => {
+      queryClient.setQueryData(['activity'], (old: ActivityItem[] | undefined) => {
+        if (!old) return [newActivity];
+        return [newActivity, ...old];
+      });
+    };
+
+    on('activity:new', handleActivityNew);
+
+    return () => {
+      off('activity:new', handleActivityNew);
+    };
+  }, [subscribe, on, off, queryClient]);
 
   return { activity: activity || [], isLoading };
 }

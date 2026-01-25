@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { api } from '@/lib/api';
 import { toast } from 'sonner';
+import { useWebSocket } from '@/contexts/WebSocketContext';
 
 export interface Service {
   id: string;
@@ -14,6 +16,7 @@ export interface Service {
 
 export function useServices() {
   const queryClient = useQueryClient();
+  const { subscribe, on, off } = useWebSocket();
 
   const { data: services, isLoading } = useQuery({
     queryKey: ['services'],
@@ -21,8 +24,23 @@ export function useServices() {
       const res = await api.get<{success: boolean, data: Service[]}>('/services');
       return res.data.data;
     },
-    refetchInterval: 5000,
+    staleTime: 10000,
   });
+
+  // Subscribe to WebSocket updates
+  useEffect(() => {
+    subscribe(['services']);
+
+    const handleServiceChange = () => {
+      queryClient.invalidateQueries({ queryKey: ['services'] });
+    };
+
+    on('service:change', handleServiceChange);
+
+    return () => {
+      off('service:change', handleServiceChange);
+    };
+  }, [subscribe, on, off, queryClient]);
 
   const startMutation = useMutation({
     mutationFn: async (type: string) => {
