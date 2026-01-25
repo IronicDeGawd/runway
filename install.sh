@@ -267,6 +267,30 @@ else
     echo -e "  Check logs: ${BLUE}journalctl -u caddy -n 50${NC}"
 fi
 
+# Configure UFW firewall if present
+if command -v ufw &> /dev/null; then
+    log_info "Configuring firewall (UFW)..."
+    
+    # Enable UFW if not already enabled (with SSH allowed first)
+    if ! ufw status | grep -q "Status: active"; then
+        ufw --force enable
+    fi
+    
+    # Allow SSH (prevent lockout)
+    ufw allow 22/tcp > /dev/null 2>&1
+    
+    # Allow HTTP for dashboard
+    ufw allow 80/tcp > /dev/null 2>&1
+    
+    # Optionally allow HTTPS for future
+    ufw allow 443/tcp > /dev/null 2>&1
+    
+    log_success "Firewall configured (ports 22, 80, 443 open)"
+else
+    log_info "UFW not installed, skipping firewall configuration"
+    log_warning "Ensure your cloud provider security group allows port 80"
+fi
+
 echo -e "${GREEN}Installation Complete!${NC}"
 echo ""
 echo -e "${GREEN}=== PDCP Control Plane Installed ===${NC}"
