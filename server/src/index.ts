@@ -9,10 +9,9 @@ import { projectRegistry } from './services/projectRegistry';
 import { authRouter } from './routes/auth';
 import { deploymentRouter } from './routes/deploy';
 import { processRouter } from './routes/process';
-// import { envRouter } from './routes/env'; // Assuming I have this? I didn't see it explicitly but user said "envRouter".
-// I'll check if envRouter exists. If not, I'll comment it out or create it.
-// The user mentions /api/env in walkthrough, so it should exist.
 import { envRouter } from './routes/env';
+import { servicesRouter } from './routes/services';
+import { metricsRouter } from './routes/metrics';
 import { initWebSocket } from './websocket';
 import { pm2Service } from './services/pm2Service';
 
@@ -34,6 +33,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/project', deploymentRouter);
 app.use('/api/process', processRouter);
 app.use('/api/env', envRouter);
+app.use('/api/services', servicesRouter);
+app.use('/api/metrics', metricsRouter);
 
 // Health check
 app.get('/health', (req, res) => {
