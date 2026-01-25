@@ -1,0 +1,225 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* PDCP Design System - Visual Design Guide Aligned */
+
+@layer base {
+  :root {
+    /* Background Layers - Darker for more depth */
+    --background: 225 24% 7%;
+    --foreground: 0 0% 100%;
+    
+    --surface: 225 20% 11%;
+    --surface-elevated: 225 18% 14%;
+    --surface-overlay: 225 22% 9%;
+    
+    /* Panel colors - Standard dark cards */
+    --panel: 225 18% 13%;
+    --panel-hover: 225 16% 16%;
+    --panel-active: 225 16% 18%;
+    --panel-border: 0 0% 100% / 0.06;
+    
+    /* Cutout system - Light containers for contrast */
+    --cutout: 225 14% 22%;
+    --cutout-border: 0 0% 100% / 0.10;
+    --cutout-light: 225 12% 28%;
+    --cutout-light-border: 0 0% 100% / 0.14;
+    
+    /* Card system */
+    --card: 225 18% 13%;
+    --card-foreground: 0 0% 100%;
+    --card-hover: 225 16% 16%;
+    --card-border: 0 0% 100% / 0.06;
+    
+    /* Accent - Vibrant lime green (#b4ff39) */
+    --accent-primary: 78 100% 61%;
+    --accent-primary-hover: 78 85% 53%;
+    --accent-primary-muted: 78 60% 35%;
+    --accent-primary-foreground: 225 20% 10%;
+    
+    /* Text hierarchy - Pure white to dim gray */
+    --text-primary: 0 0% 100%;
+    --text-secondary: 228 12% 67%;
+    --text-muted: 230 10% 47%;
+    --text-inverse: 225 20% 10%;
+    
+    /* Status colors */
+    --status-running: 78 100% 61%;
+    --status-stopped: 0 0% 50%;
+    --status-warning: 38 92% 55%;
+    --status-error: 0 72% 55%;
+    --status-building: 200 80% 55%;
+    
+    /* Surface state colors - subtle tints */
+    --surface-running: 78 100% 50% / 0.06;
+    --surface-error: 0 70% 50% / 0.06;
+    --surface-building: 200 80% 55% / 0.06;
+    --surface-stopped: 0 0% 50% / 0.03;
+    
+    /* Border state colors */
+    --border-running: 78 100% 61% / 0.4;
+    --border-error: 0 70% 50% / 0.4;
+    --border-building: 200 80% 55% / 0.4;
+    
+    /* Interactive elements */
+    --primary: 78 100% 61%;
+    --primary-foreground: 225 20% 10%;
+    --secondary: 225 12% 20%;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 225 12% 18%;
+    --muted-foreground: 225 12% 60%;
+    --destructive: 0 72% 55%;
+    --destructive-foreground: 0 0% 100%;
+    
+    /* UI elements */
+    --border: 0 0% 100% / 0.08;
+    --input: 225 16% 15%;
+    --input-border: 225 12% 25%;
+    --ring: 78 100% 61%;
+    --popover: 225 18% 14%;
+    --popover-foreground: 0 0% 100%;
+    
+    /* Sidebar specific - Darker for depth separation */
+    --sidebar-background: 225 28% 6%;
+    --sidebar-foreground: 228 12% 67%;
+    --sidebar-primary: 78 100% 61%;
+    --sidebar-primary-foreground: 225 20% 10%;
+    --sidebar-accent: 78 100% 61% / 0.08;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 225 20% 12%;
+    --sidebar-active-border: 78 100% 61%;
+    --sidebar-ring: 78 100% 61%;
+    
+    /* Radius tokens - Larger for premium feel */
+    --radius: 0.5rem;
+    --radius-sm: 0.375rem;
+    --radius-lg: 0.75rem;
+    --radius-xl: 1rem;
+    --radius-2xl: 1.5rem;
+    --radius-3xl: 1.5rem;
+    --radius-pill: 9999px;
+    --radius-card: 24px;
+    --radius-button: 22px;
+    
+    /* Shadow tokens */
+    --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.3);
+    --shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.4);
+    --shadow-card: 0 4px 24px rgba(0,0,0,0.3);
+    --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.4);
+    --shadow-elevated: 0 12px 40px -8px rgba(0,0,0,0.6);
+    --shadow-glow: 0 0 20px -5px hsl(78 100% 61% / 0.3);
+    --shadow-glow-accent: 0 4px 20px rgba(180,255,57,0.35);
+    --shadow-ring-glow: 0 0 12px rgba(180,255,57,0.4);
+    
+    /* Activity item backgrounds */
+    --activity-bg: 0 0% 100% / 0.03;
+    --activity-bg-hover: 0 0% 100% / 0.05;
+    
+    /* Status pill backgrounds */
+    --status-pill-default: 0 0% 100% / 0.1;
+    --status-pill-running: 78 100% 61%;
+    --status-pill-draft: 38 92% 55% / 0.15;
+    --status-pill-success: 78 100% 61% / 0.15;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1, "tnum" 1;
+  }
+  
+  /* Tabular numbers for metrics */
+  .tabular-nums {
+    font-feature-settings: "tnum" 1;
+  }
+  
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--surface));
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--panel-border));
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--text-muted));
+  }
+}
+
+/* Animation utilities */
+@layer utilities {
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      hsl(var(--panel)) 0%,
+      hsl(var(--panel-hover)) 50%,
+      hsl(var(--panel)) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+  
+  @keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  
+  @keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--accent-primary) / 0); }
+    50% { box-shadow: 0 0 20px 5px hsl(var(--accent-primary) / 0.3); }
+  }
+  
+  .animate-counter {
+    animation: counter 0.5s ease-out forwards;
+  }
+  
+  .terminal-cursor {
+    animation: blink 1s step-end infinite;
+  }
+  
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+  }
+  
+  /* Hover lift effect for cards and buttons */
+  .hover-lift {
+    transition: transform 175ms ease-out, box-shadow 175ms ease-out;
+  }
+  
+  .hover-lift:hover {
+    transform: translateY(-2px);
+  }
+  
+  /* Button press effect */
+  .press-effect:active {
+    transform: scale(0.97);
+  }
+  
+  /* Subtle background shift on hover */
+  .hover-bg-shift {
+    transition: background-color 175ms ease-out;
+  }
+  
+  .hover-bg-shift:hover {
+    background-color: hsl(0 0% 100% / 0.03);
+  }
+}

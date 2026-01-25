@@ -1,0 +1,14 @@
+{
+  "name": "pdcp-monorepo",
+  "private": true,
+  "workspaces": [
+    "server",
+    "ui",
+    "shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces"
+  }
+}
