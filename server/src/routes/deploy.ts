@@ -12,6 +12,27 @@ import { ProjectType } from '@pdcp/shared';
 const router = Router();
 const upload = multer({ dest: '../temp_uploads/' });
 
+// Get all projects
+router.get('/', requireAuth, async (req, res, next) => {
+  try {
+    const projects = await projectRegistry.getAll();
+    res.json({ success: true, data: projects });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get project by ID
+router.get('/:id', requireAuth, async (req, res, next) => {
+  try {
+    const project = await projectRegistry.getById(req.params.id);
+    if (!project) return next(new AppError('Project not found', 404));
+    res.json({ success: true, data: project });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/deploy', requireAuth, upload.single('file'), async (req, res, next) => {
   if (!req.file) {
     return next(new AppError('No file uploaded', 400));
