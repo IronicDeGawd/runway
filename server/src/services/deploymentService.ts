@@ -7,6 +7,7 @@ import { ProjectConfig, PackageManager, ProjectType } from '@pdcp/shared';
 import { extractZip } from './zipService';
 import { projectRegistry } from './projectRegistry';
 import { portManager } from './portManager';
+import { pm2Service } from './pm2Service';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 
@@ -140,6 +141,11 @@ export class DeploymentService {
       } else {
         await projectRegistry.create(newConfig);
       }
+
+      // 9. Start Process (if not static)
+      // Import locally to avoid circular dep if needed, or import at top
+      // We already imported pm2Service (need to add import)
+      await pm2Service.startProject(newConfig);
 
       logger.info(`Deployment successful for ${projectName} (${projectId})`);
       
