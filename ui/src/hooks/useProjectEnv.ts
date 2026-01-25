@@ -24,10 +24,14 @@ export function useProjectEnv(projectId: string | undefined) {
     const updateEnvMutation = useMutation({
         mutationFn: async (vars: Record<string, string>) => {
             if (!projectId) return;
-            await api.post(`/env/${projectId}`, vars);
+            const response = await api.post(`/env/${projectId}`, { env: vars });
+            return response.data;
         },
-        onSuccess: () => {
+        onSuccess: (data) => {
             toast.success('Environment updated');
+            if (data.actionMessage) {
+              toast.warning(data.actionMessage, { duration: 5000 });
+            }
             queryClient.invalidateQueries({ queryKey: ['env', projectId] });
         },
         onError: () => toast.error('Failed to update environment')
