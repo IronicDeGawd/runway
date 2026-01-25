@@ -11,6 +11,7 @@ import { pm2Service } from './pm2Service';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { envService } from './envService';
+import { activityLogger } from './activityLogger';
 
 const execAsync = util.promisify(exec);
 
@@ -138,6 +139,10 @@ export class DeploymentService {
 
       logger.info(`Deployment successful for ${projectName} (${projectId})`);
       
+      // Log activity
+      await activityLogger.log('deploy', projectName, 
+        `Deployed ${projectName} (${type}) successfully`);
+      
       // Cleanup uploaded file
       await fs.remove(filePath);
 
@@ -145,6 +150,11 @@ export class DeploymentService {
 
     } catch (error) {
       logger.error('Deployment failed', error);
+      
+      // Log error activity
+      await activityLogger.log('error', projectName, 
+        `Deployment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
       // Cleanup staging
       await fs.remove(stagingDir);
       // Cleanup file

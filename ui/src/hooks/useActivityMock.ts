@@ -1,36 +1,30 @@
-import * as React from "react";
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 
 export interface ActivityItem {
   id: string;
-  type: "deploy" | "start" | "stop" | "error" | "config";
+  type: "deploy" | "start" | "stop" | "error" | "config" | "delete";
   project: string;
   message: string;
-  timestamp: Date;
+  timestamp: string;
 }
-
-const mockActivity: ActivityItem[] = [
-  { id: "1", type: "deploy", project: "api-gateway", message: "Deployed v2.1.0 to production", timestamp: new Date(Date.now() - 1000 * 60 * 2) },
-  { id: "2", type: "start", project: "frontend-app", message: "Service started", timestamp: new Date(Date.now() - 1000 * 60 * 15) },
-  { id: "3", type: "error", project: "ml-service", message: "Health check failed", timestamp: new Date(Date.now() - 1000 * 60 * 30) },
-  { id: "4", type: "stop", project: "ml-service", message: "Service stopped by user", timestamp: new Date(Date.now() - 1000 * 60 * 45) },
-  { id: "5", type: "config", project: "auth-service", message: "Environment variables updated", timestamp: new Date(Date.now() - 1000 * 60 * 60) },
-  { id: "6", type: "deploy", project: "frontend-app", message: "Deployed v1.5.2", timestamp: new Date(Date.now() - 1000 * 60 * 90) },
-];
 
 export function useActivityMock() {
-  const [activity, setActivity] = React.useState<ActivityItem[]>(mockActivity);
-  const [isLoading, setIsLoading] = React.useState(true);
+  const { data: activity, isLoading } = useQuery({
+    queryKey: ['activity'],
+    queryFn: async () => {
+      const res = await api.get<{success: boolean, data: ActivityItem[]}>('/activity');
+      return res.data.data;
+    },
+    refetchInterval: 10000, // Refresh every 10 seconds
+  });
 
-  React.useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  return { activity, isLoading };
+  return { activity: activity || [], isLoading };
 }
 
-export function formatTimeAgo(date: Date): string {
-  const seconds = Math.floor((new Date().getTime() - date.getTime()) / 1000);
+export function formatTimeAgo(date: string | Date): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  const seconds = Math.floor((new Date().getTime() - dateObj.getTime()) / 1000);
   
   if (seconds < 60) return "just now";
   if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
