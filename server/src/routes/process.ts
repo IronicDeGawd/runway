@@ -23,7 +23,17 @@ const getProject = async (id: string) => {
   const project = await projectRegistry.getById(id);
   if (!project) throw new AppError('Project not found', 404);
   return project;
+  return project;
 };
+
+router.get('/', requireAuth, async (req, res, next) => {
+  try {
+    const processes = await pm2Service.getProcesses();
+    res.json({ success: true, data: processes });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.post('/:id/start', requireAuth, async (req, res, next) => {
   try {

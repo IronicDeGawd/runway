@@ -120,6 +120,26 @@ export class PM2Service {
     }
   }
 
+  async getProcesses(): Promise<any[]> {
+    try {
+      await pm2Connect();
+      const list = await pm2List();
+      return list.map((p: any) => ({
+        name: p.name,
+        pid: p.pid,
+        status: p.pm2_env.status,
+        uptime: p.pm2_env.pm_uptime,
+        cpu: p.monit.cpu,
+        memory: p.monit.memory,
+      }));
+    } catch (error) {
+      logger.error('Failed to list processes', error);
+      return [];
+    } finally {
+      pm2.disconnect();
+    }
+  }
+
   async reconcile(projects: ProjectConfig[]): Promise<void> {
     logger.info('Reconciling PM2 processes...');
     try {
