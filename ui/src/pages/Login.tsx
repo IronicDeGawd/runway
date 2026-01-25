@@ -5,16 +5,30 @@ import { Lock, Shield, ArrowRight } from "lucide-react";
 import { PDCPButton } from "@/components/pdcp/PDCPButton";
 import { PDCPInput, PasswordInput, FormField } from "@/components/pdcp/FormControls";
 
+import { api, LoginResponse } from "@/lib/api";
+import { toast } from "sonner";
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = React.useState(false);
+  const [username, setUsername] = React.useState("admin");
+  const [password, setPassword] = React.useState("");
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setTimeout(() => {
-      navigate("/");
-    }, 1500);
+    try {
+      const res = await api.post<LoginResponse>('/auth/login', { username, password });
+      if (res.data.success) {
+        localStorage.setItem('token', res.data.token);
+        toast.success('LoggedIn successfully');
+        navigate('/');
+      }
+    } catch (error) {
+      toast.error('Login failed: Invalid credentials');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -40,7 +54,7 @@ export default function LoginPage() {
       </div>
 
       {/* Grid pattern overlay */}
-      <div 
+      <div
         className="absolute inset-0 opacity-[0.02]"
         style={{
           backgroundImage: `linear-gradient(hsl(var(--text-primary)) 1px, transparent 1px),
@@ -94,16 +108,18 @@ export default function LoginPage() {
             <FormField label="Username or Email">
               <PDCPInput
                 type="text"
-                placeholder="admin@pdcp.local"
+                placeholder="admin"
                 icon={<Lock className="w-4 h-4" />}
-                defaultValue="admin@pdcp.local"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
               />
             </FormField>
 
             <FormField label="Password">
               <PasswordInput
                 placeholder="Enter your password"
-                defaultValue="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </FormField>
 

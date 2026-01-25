@@ -1,51 +1,38 @@
-import * as React from "react";
-
-export interface SystemMetrics {
-  cpu: number;
-  memory: number;
-  disk: number;
-  network: { in: number; out: number };
-  uptime: number;
-}
+import { useQuery } from '@tanstack/react-query';
+import { api, ProcessStatus } from '@/lib/api';
 
 export function useSystemMetrics() {
-  const [metrics, setMetrics] = React.useState<SystemMetrics>({
-    cpu: 45,
-    memory: 62,
-    disk: 38,
-    network: { in: 125, out: 89 },
-    uptime: 99.98,
-  });
-  const [history, setHistory] = React.useState<number[]>([40, 42, 45, 43, 48, 52, 45, 42, 45]);
-  const [isLoading, setIsLoading] = React.useState(true);
-
-  React.useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 600);
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Simulate live updates
-  React.useEffect(() => {
-    const interval = setInterval(() => {
-      setMetrics((prev) => ({
-        cpu: Math.max(5, Math.min(95, prev.cpu + (Math.random() * 10 - 5))),
-        memory: Math.max(20, Math.min(90, prev.memory + (Math.random() * 4 - 2))),
-        disk: Math.max(20, Math.min(80, prev.disk + (Math.random() * 2 - 1))),
-        network: {
-          in: Math.max(50, Math.min(300, prev.network.in + (Math.random() * 20 - 10))),
-          out: Math.max(30, Math.min(200, prev.network.out + (Math.random() * 15 - 7))),
+    // We reuse the process list to calculate aggregate metrics for now
+    // In a real system we'd have a /metrics endpoint for robust system stats (os.loadavg, etc)
+    
+     const { data: processesData, isLoading } = useQuery({
+        queryKey: ['processes'],
+        queryFn: async () => {
+             const res = await api.get<{success: boolean, data: ProcessStatus[]}>('/process');
+             return res.data.data;
         },
-        uptime: 99.98,
-      }));
+        refetchInterval: 2000,
+    });
+    
+    // Fake OS metrics based on process load + baseline
+    const totalMem = 8 * 1024; // 8GB fake
+    const usedMem = (processesData || []).reduce((acc, p) => acc + (p.memory / 1024 / 1024), 0);
+    const memPercent = Math.min((usedMem / totalMem) * 100 + 10, 100); // Baseline 10%
 
-      setHistory((prev) => {
-        const newVal = Math.max(5, Math.min(95, prev[prev.length - 1] + (Math.random() * 10 - 5)));
-        return [...prev.slice(-11), newVal];
-      });
-    }, 2000);
+    const totalCpu = (processesData || []).reduce((acc, p) => acc + p.cpu, 0);
+    const cpuPercent = Math.min(totalCpu + 5, 100);
 
-    return () => clearInterval(interval);
-  }, []);
+    const metrics = {
+        cpu: cpuPercent,
+        memory: memPercent,
+        disk: 45, // Static for now
+        uptime: 99.9,
+        requests: 1200,
+    };
 
-  return { metrics, history, isLoading };
+    return {
+        metrics,
+        history: [], // Todo: keep history in state
+        isLoading
+    };
 }

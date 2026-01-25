@@ -1,131 +1,121 @@
-import * as React from "react";
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { api, ProjectsResponse, ProcessStatus } from '@/lib/api';
+import { ProjectConfig, ProjectType } from '@pdcp/shared';
+import { toast } from 'sonner';
 
-export interface Project {
-  id: string;
-  name: string;
-  runtime: "node" | "python" | "go" | "rust" | "static" | "docker";
-  status: "running" | "stopped" | "building" | "error";
-  domain: string;
-  port: number;
-  createdAt: Date;
-  lastDeployed: Date;
-  memory: number;
-  cpu: number;
+// Extended Project interface with runtime status
+export interface Project extends Omit<ProjectConfig, 'createdAt'> {
+    status: 'running' | 'stopped' | 'failed' | 'building' | 'online';
+    memory?: number;
+    cpu?: number;
+    uptime?: number;
+    domain: string; 
+    runtime: ProjectType;
+    createdAt: Date;
+    lastDeployed: Date;
 }
 
-const mockProjects: Project[] = [
-  {
-    id: "1",
-    name: "api-gateway",
-    runtime: "node",
-    status: "running",
-    domain: "api.example.com",
-    port: 3000,
-    createdAt: new Date("2024-01-15"),
-    lastDeployed: new Date("2024-01-20"),
-    memory: 256,
-    cpu: 12,
-  },
-  {
-    id: "2",
-    name: "frontend-app",
-    runtime: "static",
-    status: "running",
-    domain: "app.example.com",
-    port: 8080,
-    createdAt: new Date("2024-01-10"),
-    lastDeployed: new Date("2024-01-19"),
-    memory: 128,
-    cpu: 5,
-  },
-  {
-    id: "3",
-    name: "ml-service",
-    runtime: "python",
-    status: "stopped",
-    domain: "ml.example.com",
-    port: 5000,
-    createdAt: new Date("2024-01-05"),
-    lastDeployed: new Date("2024-01-18"),
-    memory: 512,
-    cpu: 0,
-  },
-  {
-    id: "4",
-    name: "auth-service",
-    runtime: "go",
-    status: "building",
-    domain: "auth.example.com",
-    port: 4000,
-    createdAt: new Date("2024-01-12"),
-    lastDeployed: new Date("2024-01-17"),
-    memory: 64,
-    cpu: 8,
-  },
-];
+export function useProjectsMock() { // Renaming to useProjects later, but keeping interface combatibility for now
+    const queryClient = useQueryClient();
 
-export function useProjectsMock() {
-  const [projects, setProjects] = React.useState<Project[]>(mockProjects);
-  const [isLoading, setIsLoading] = React.useState(true);
+    // Fetch Projects
+    const { data: projectsData, isLoading: projectsLoading } = useQuery({
+        queryKey: ['projects'],
+        queryFn: async () => {
+            const res = await api.get<ProjectsResponse>('/project');
+            return res.data.data;
+        },
+        refetchInterval: 5000,
+    });
 
-  React.useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 800);
-    return () => clearTimeout(timer);
-  }, []);
+    // Fetch Processes Status
+    const { data: processesData } = useQuery({
+        queryKey: ['processes'],
+        queryFn: async () => {
+             const res = await api.get<{success: boolean, data: ProcessStatus[]}>('/process');
+             return res.data.data;
+        },
+        refetchInterval: 2000,
+    });
 
-  const startProject = React.useCallback((id: string) => {
-    setProjects((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, status: "building" as const } : p
-      )
-    );
-    setTimeout(() => {
-      setProjects((prev) =>
-        prev.map((p) =>
-          p.id === id ? { ...p, status: "running" as const, cpu: Math.floor(Math.random() * 20) + 5 } : p
-        )
-      );
-    }, 2000);
-  }, []);
+    // Merge Data
+    const projects: Project[] = (projectsData || []).map(p => {
+        const process = (processesData || []).find(proc => proc.name === p.id);
+        const status = process ? (process.status === 'online' ? 'running' : process.status) : 'stopped';
+        
+        // Map pm2 status to UI status
+        let uiStatus: Project['status'] = 'stopped';
+        if (status === 'online' || status === 'running') uiStatus = 'running';
+        if (status === 'errored') uiStatus = 'failed';
+        if (status === 'launching') uiStatus = 'building';
 
-  const stopProject = React.useCallback((id: string) => {
-    setProjects((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, status: "stopped" as const, cpu: 0 } : p
-      )
-    );
-  }, []);
+        return {
+            ...p,
+            status: uiStatus,
+            memory: process ? Math.round(process.memory / 1024 / 1024) : 0, // Bytes to MB
+            cpu: process ? process.cpu : 0,
+            uptime: process ? process.uptime : 0,
+            domain: p.domains && p.domains.length > 0 ? p.domains[0] : `${p.name}.pdcp.local`,
+            runtime: p.type,
+            createdAt: new Date(p.createdAt), // Convert string to Date
+            lastDeployed: new Date(p.createdAt), // Fallback (API doesn't track lastDeployed yet, assuming createdAt for now)
+        };
+    });
 
-  const restartProject = React.useCallback((id: string) => {
-    setProjects((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, status: "building" as const } : p
-      )
-    );
-    setTimeout(() => {
-      setProjects((prev) =>
-        prev.map((p) =>
-          p.id === id ? { ...p, status: "running" as const, cpu: Math.floor(Math.random() * 20) + 5 } : p
-        )
-      );
-    }, 1500);
-  }, []);
+    const getProject = (id: string) => projects.find(p => p.id === id);
 
-  const deleteProject = React.useCallback((id: string) => {
-    setProjects((prev) => prev.filter((p) => p.id !== id));
-  }, []);
+    // Mutations
+    const startMutation = useMutation({
+        mutationFn: async (id: string) => {
+            await api.post(`/process/${id}/start`);
+        },
+        onSuccess: () => {
+            toast.success('Project started');
+            queryClient.invalidateQueries({ queryKey: ['processes'] });
+        },
+        onError: () => toast.error('Failed to start project'),
+    });
 
-  const getProject = React.useCallback((id: string) => {
-    return projects.find((p) => p.id === id);
-  }, [projects]);
+    const stopMutation = useMutation({
+        mutationFn: async (id: string) => {
+            await api.post(`/process/${id}/stop`);
+        },
+        onSuccess: () => {
+            toast.success('Project stopped');
+            queryClient.invalidateQueries({ queryKey: ['processes'] });
+        },
+        onError: () => toast.error('Failed to stop project'),
+    });
+    
+    const restartMutation = useMutation({
+        mutationFn: async (id: string) => {
+            await api.post(`/process/${id}/restart`);
+        },
+        onSuccess: () => {
+            toast.success('Project restarted');
+            queryClient.invalidateQueries({ queryKey: ['processes'] });
+        },
+        onError: () => toast.error('Failed to restart project'),
+    });
 
-  return {
-    projects,
-    isLoading,
-    startProject,
-    stopProject,
-    restartProject,
-    deleteProject,
-    getProject,
-  };
+    const deleteMutation = useMutation({
+        mutationFn: async (id: string) => {
+            await api.delete(`/process/${id}`); // Using process delete for full cleanup
+        },
+        onSuccess: () => {
+            toast.success('Project deleted');
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+        },
+        onError: () => toast.error('Failed to delete project'),
+    });
+
+    return {
+        projects,
+        isLoading: projectsLoading,
+        startProject: (id: string) => startMutation.mutateAsync(id),
+        stopProject: (id: string) => stopMutation.mutateAsync(id),
+        restartProject: (id: string) => restartMutation.mutateAsync(id),
+        deleteProject: (id: string) => deleteMutation.mutateAsync(id),
+        getProject,
+    };
 }

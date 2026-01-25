@@ -1,4 +1,6 @@
 import * as React from "react";
+import { api } from "@/lib/api";
+import { toast } from "sonner";
 
 export type DeployStep = "upload" | "configure" | "build" | "deploy" | "complete";
 
@@ -9,27 +11,6 @@ export interface DeployState {
   error?: string;
 }
 
-const buildLogs = [
-  "[INFO] Starting build process...",
-  "[INFO] Detecting runtime: Node.js 20.x",
-  "[INFO] Installing dependencies...",
-  "[INFO] npm install --production",
-  "[INFO] added 142 packages in 4.2s",
-  "[INFO] Building application...",
-  "[INFO] Running build script...",
-  "[SUCCESS] Build completed successfully!",
-];
-
-const deployLogs = [
-  "[INFO] Preparing deployment...",
-  "[INFO] Creating container image...",
-  "[INFO] Pushing to registry...",
-  "[INFO] Updating service configuration...",
-  "[INFO] Starting health checks...",
-  "[SUCCESS] Service is healthy!",
-  "[SUCCESS] Deployment complete!",
-];
-
 export function useDeployFlowMock() {
   const [state, setState] = React.useState<DeployState>({
     step: "upload",
@@ -37,67 +18,83 @@ export function useDeployFlowMock() {
     logs: [],
   });
   const [isDeploying, setIsDeploying] = React.useState(false);
+  const [deployConfig, setDeployConfig] = React.useState<{file?: File, name: string, runtime: string} | null>(null);
 
   const startDeploy = React.useCallback((file?: File, config?: { runtime: string; name: string }) => {
-    setIsDeploying(true);
+    if (!file || !config) return;
+    setDeployConfig({ file, ...config });
+    
+    // Simulate upload progress
     setState({ step: "upload", progress: 0, logs: [] });
-
-    // Simulate upload
     let progress = 0;
     const uploadInterval = setInterval(() => {
-      progress += Math.random() * 15;
+      progress += 10;
       if (progress >= 100) {
-        progress = 100;
         clearInterval(uploadInterval);
         setState((prev) => ({ ...prev, step: "configure", progress: 100 }));
       } else {
         setState((prev) => ({ ...prev, progress }));
       }
-    }, 200);
-
-    return () => clearInterval(uploadInterval);
+    }, 100);
+    
+    // Cleanup not returned effectively here but manageable
   }, []);
 
-  const confirmConfig = React.useCallback(() => {
-    setState((prev) => ({ ...prev, step: "build", progress: 0, logs: [] }));
+  const confirmConfig = React.useCallback(async () => {
+    if (!deployConfig || !deployConfig.file) {
+        toast.error("Missing configuration");
+        return;
+    }
 
-    // Simulate build logs
-    let logIndex = 0;
-    const logInterval = setInterval(() => {
-      if (logIndex < buildLogs.length) {
-        setState((prev) => ({
-          ...prev,
-          logs: [...prev.logs, buildLogs[logIndex]],
-          progress: ((logIndex + 1) / buildLogs.length) * 100,
+    setIsDeploying(true);
+    setState((prev) => ({ ...prev, step: "build", progress: 0, logs: ["Preparing deployment package..."] }));
+
+    const formData = new FormData();
+    formData.append('file', deployConfig.file);
+    formData.append('name', deployConfig.name);
+    formData.append('type', deployConfig.runtime);
+
+    try {
+        // Fake build progress while waiting
+        const progressInterval = setInterval(() => {
+            setState(prev => {
+                if (prev.progress < 90) return { ...prev, progress: prev.progress + 5 };
+                return prev;
+            });
+        }, 500);
+
+        setState(prev => ({ ...prev, logs: [...prev.logs, "Uploading and building project...", "This may take a minute..."] }));
+
+        // Actual API call
+        await api.post('/project/deploy', formData, {
+             headers: { 'Content-Type': 'multipart/form-data' }
+        });
+
+        clearInterval(progressInterval);
+        setState((prev) => ({ 
+            ...prev, 
+            step: "complete", 
+            progress: 100, 
+            logs: [...prev.logs, "Deployment successful!", "Project is online."] 
         }));
-        logIndex++;
-      } else {
-        clearInterval(logInterval);
-        setState((prev) => ({ ...prev, step: "deploy", progress: 0, logs: [] }));
-        
-        // Start deploy phase
-        let deployLogIndex = 0;
-        const deployInterval = setInterval(() => {
-          if (deployLogIndex < deployLogs.length) {
-            setState((prev) => ({
-              ...prev,
-              logs: [...prev.logs, deployLogs[deployLogIndex]],
-              progress: ((deployLogIndex + 1) / deployLogs.length) * 100,
-            }));
-            deployLogIndex++;
-          } else {
-            clearInterval(deployInterval);
-            setState((prev) => ({ ...prev, step: "complete", progress: 100 }));
-            setIsDeploying(false);
-          }
-        }, 600);
-      }
-    }, 400);
-  }, []);
+        toast.success("Deployment successful!");
+
+    } catch (error: any) {
+        setState(prev => ({ 
+            ...prev, 
+            error: error.response?.data?.error || "Deployment failed", 
+            logs: [...prev.logs, `Error: ${error.response?.data?.error || "Deployment failed"}`] 
+        }));
+        toast.error(error.response?.data?.error || "Deployment failed");
+    } finally {
+        setIsDeploying(false);
+    }
+  }, [deployConfig]);
 
   const reset = React.useCallback(() => {
     setState({ step: "upload", progress: 0, logs: [] });
     setIsDeploying(false);
+    setDeployConfig(null);
   }, []);
 
   const setStep = React.useCallback((step: DeployStep) => {
