@@ -21,7 +21,7 @@ const validateEntry = (fileName: string): void => {
 
 export const extractZip = (zipFilePath: string, destDir: string): Promise<ZipExtractionResult> => {
   return new Promise((resolve, reject) => {
-    yauzl.open(zipFilePath, { lazyEntries: true }, (err, zipfile) => {
+    yauzl.open(zipFilePath, { lazyEntries: true }, (err: any, zipfile: any) => {
       if (err) return reject(err);
       if (!zipfile) return reject(new AppError('Failed to open zip file', 500));
 
@@ -34,7 +34,7 @@ export const extractZip = (zipFilePath: string, destDir: string): Promise<ZipExt
 
       zipfile.readEntry();
 
-      zipfile.on('entry', (entry: yauzl.Entry) => {
+      zipfile.on('entry', (entry: any) => {
         try {
           validateEntry(entry.fileName);
 
@@ -67,7 +67,7 @@ export const extractZip = (zipFilePath: string, destDir: string): Promise<ZipExt
             fs.mkdirSync(parentDir, { recursive: true });
           }
 
-          zipfile.openReadStream(entry, (err, readStream) => {
+          zipfile.openReadStream(entry, (err: any, readStream: any) => {
             if (err) return reject(err);
             if (!readStream) return reject(new Error('Failed to create read stream'));
 
@@ -95,7 +95,7 @@ export const extractZip = (zipFilePath: string, destDir: string): Promise<ZipExt
         resolve({ extractionPath: destDir, fileCount });
       });
 
-      zipfile.on('error', (zipErr) => {
+      zipfile.on('error', (zipErr: any) => {
         reject(zipErr);
       });
     });

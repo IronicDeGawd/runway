@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { ProjectConfig } from '@pdcp/shared';
 import { requireAuth } from '../middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
 import { pm2Service } from '../services/pm2Service';
@@ -19,10 +20,9 @@ import path from 'path';
 const router = Router();
 
 // Validate project existence middleware or helper
-const getProject = async (id: string) => {
+const getProject = async (id: string): Promise<ProjectConfig> => {
   const project = await projectRegistry.getById(id);
   if (!project) throw new AppError('Project not found', 404);
-  return project;
   return project;
 };
 

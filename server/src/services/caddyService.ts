@@ -12,6 +12,8 @@ export class CaddyService {
   
   private async generateCaddyfile(): Promise<string> {
     const projects = await projectRegistry.getAll();
+    const uiDist = path.resolve(process.cwd(), '../ui/dist');
+
     let fileContent = `
 {
     # Global options
@@ -20,7 +22,19 @@ export class CaddyService {
 
 # Control Plane
 :80 {
-    reverse_proxy 127.0.0.1:3000
+    # Serve UI Static Files
+    root * ${uiDist}
+    file_server
+    try_files {path} /index.html
+
+    # Proxy API & Websockets
+    handle /api/* {
+        reverse_proxy 127.0.0.1:3000
+    }
+    
+    handle /socket.io/* {
+        reverse_proxy 127.0.0.1:3000
+    }
 }
     `.trim() + '\n\n';
 

@@ -32,7 +32,6 @@
     "@types/proper-lockfile": "^4.1.4",
     "@types/multer": "^1.4.11",
     "@types/fs-extra": "^11.0.4",
-    "@types/pm2": "^2.10.3",
     "@types/ws": "^8.5.10",
     "ts-node": "^10.9.1"
   }

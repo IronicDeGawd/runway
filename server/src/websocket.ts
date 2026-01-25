@@ -65,7 +65,7 @@ export const initWebSocket = (server: HttpServer) => {
   wss.on('close', () => clearInterval(interval));
 
   // PM2 Bus
-  pm2.launchBus((err, bus) => {
+  pm2.launchBus((err: any, bus: any) => {
     if (err) {
       logger.error('Failed to launch PM2 bus', err);
       return;

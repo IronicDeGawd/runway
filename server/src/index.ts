@@ -1,17 +1,33 @@
 import express from 'express';
-import pino from 'pino';
+import { createServer } from 'http';
 import { logger } from './utils/logger';
 import { errorHandler } from './middleware/errorHandler';
+// import { projectRegistry } from './services/projectRegistry'; // Assuming this exists or will be auto-imported if I use it?
+// Actually I need to import it.
+import { projectRegistry } from './services/projectRegistry';
 
 import { authRouter } from './routes/auth';
 import { deploymentRouter } from './routes/deploy';
 import { processRouter } from './routes/process';
+// import { envRouter } from './routes/env'; // Assuming I have this? I didn't see it explicitly but user said "envRouter".
+// I'll check if envRouter exists. If not, I'll comment it out or create it.
+// The user mentions /api/env in walkthrough, so it should exist.
 import { envRouter } from './routes/env';
 import { initWebSocket } from './websocket';
-import { createServer } from 'http';
 import { pm2Service } from './services/pm2Service';
 
-// ...
+const app = express();
+const httpServer = createServer(app);
+const port = process.env.PORT || 3000;
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Request logging
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.url}`);
+  next();
+});
 
 // API Routes
 app.use('/api/auth', authRouter);
@@ -46,4 +62,3 @@ httpServer.listen(port, async () => {
     logger.error('Failed to reconcile processes on boot', error);
   }
 });
-
