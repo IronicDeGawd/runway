@@ -10,6 +10,8 @@ import {
   Copy,
   Check,
   HardDrive,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/pdcp/DashboardLayout";
 import { PanelCard, PanelCardHeader, PanelCardTitle, PanelCardContent } from "@/components/pdcp/PanelCard";
@@ -19,8 +21,19 @@ import { PDCPButton, IconButton } from "@/components/pdcp/PDCPButton";
 import { Skeleton } from "@/components/pdcp/ProgressElements";
 import { useServices, Service } from "@/hooks/useServices";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
-function ServiceCard({ service, onStart, onStop }: { service: Service; onStart: () => void; onStop: () => void }) {
+function ServiceCard({ 
+  service, 
+  onStart, 
+  onStop, 
+  onDelete 
+}: { 
+  service: Service; 
+  onStart: () => void; 
+  onStop: () => void;
+  onDelete: () => void;
+}) {
   const [showConnection, setShowConnection] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
 
@@ -103,15 +116,25 @@ function ServiceCard({ service, onStart, onStop }: { service: Service; onStart: 
         {/* Actions */}
         <div className="flex gap-2 mt-4 pt-4 border-t border-panel-border">
           {service.status === "running" ? (
-            <PDCPButton variant="danger" size="sm" className="flex-1" onClick={onStop}>
-              <Square className="w-4 h-4" />
-              Stop
-            </PDCPButton>
+            <>
+              <PDCPButton variant="danger" size="sm" className="flex-1" onClick={onStop}>
+                <Square className="w-4 h-4" />
+                Stop
+              </PDCPButton>
+              <IconButton variant="danger-ghost" size="icon-sm" onClick={onDelete}>
+                <Trash2 className="w-4 h-4" />
+              </IconButton>
+            </>
           ) : (
-            <PDCPButton variant="success" size="sm" className="flex-1" onClick={onStart}>
-              <Play className="w-4 h-4" />
-              Start
-            </PDCPButton>
+            <>
+              <PDCPButton variant="success" size="sm" className="flex-1" onClick={onStart}>
+                <Play className="w-4 h-4" />
+                Start
+              </PDCPButton>
+              <IconButton variant="danger-ghost" size="icon-sm" onClick={onDelete}>
+                <Trash2 className="w-4 h-4" />
+              </IconButton>
+            </>
           )}
         </div>
       </PanelCard>
@@ -120,7 +143,37 @@ function ServiceCard({ service, onStart, onStop }: { service: Service; onStart: 
 }
 
 export default function ServicesPage() {
-  const { services, isLoading, startService, stopService } = useServices();
+  const { services, isLoading, startService, stopService, createService, deleteService } = useServices();
+
+  const handleCreatePostgres = async () => {
+    try {
+      await createService('postgres');
+      toast.success('PostgreSQL service created and started');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create PostgreSQL');
+    }
+  };
+
+  const handleCreateRedis = async () => {
+    try {
+      await createService('redis');
+      toast.success('Redis service created and started');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create Redis');
+    }
+  };
+
+  const handleDelete = async (serviceId: string, serviceName: string) => {
+    if (!confirm(`Are you sure you want to delete ${serviceName}? This will remove all data.`)) {
+      return;
+    }
+    try {
+      await deleteService(serviceId);
+      toast.success(`${serviceName} deleted successfully`);
+    } catch (error: any) {
+      toast.error(error.message || `Failed to delete ${serviceName}`);
+    }
+  };
 
   return (
     <DashboardLayout>
@@ -152,22 +205,57 @@ export default function ServicesPage() {
               ))}
             </div>
           ) : services.length === 0 ? (
-            <div className="text-center py-12">
-              <Server className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
-              <p className="text-text-muted text-sm">No services available</p>
-              <p className="text-text-muted text-xs mt-1">Make sure Docker is installed and running</p>
+            <div className="text-center py-16">
+              <Server className="w-16 h-16 text-text-muted mx-auto mb-4 opacity-50" />
+              <p className="text-text-primary font-medium mb-2">No services deployed</p>
+              <p className="text-text-muted text-sm mb-6">
+                Deploy PostgreSQL or Redis to get started
+              </p>
+              <div className="flex gap-3 justify-center">
+                <PDCPButton variant="primary" onClick={handleCreatePostgres}>
+                  <Database className="w-4 h-4" />
+                  Deploy PostgreSQL
+                </PDCPButton>
+                <PDCPButton variant="primary" onClick={handleCreateRedis}>
+                  <Server className="w-4 h-4" />
+                  Deploy Redis
+                </PDCPButton>
+              </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {services.map((service) => (
-                <ServiceCard
-                  key={service.id}
-                  service={service}
-                  onStart={() => startService(service.id)}
-                  onStop={() => stopService(service.id)}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {services.map((service) => (
+                  <ServiceCard
+                    key={service.id}
+                    service={service}
+                    onStart={() => startService(service.id)}
+                    onStop={() => stopService(service.id)}
+                    onDelete={() => handleDelete(service.id, service.name)}
+                  />
+                ))}
+              </div>
+              
+              {/* Add more services */}
+              {services.length < 2 && (
+                <div className="mt-6 pt-6 border-t border-panel-border">
+                  <div className="flex gap-3 justify-center">
+                    {!services.find(s => s.type === 'postgres') && (
+                      <PDCPButton variant="secondary" size="sm" onClick={handleCreatePostgres}>
+                        <Plus className="w-4 h-4" />
+                        Add PostgreSQL
+                      </PDCPButton>
+                    )}
+                    {!services.find(s => s.type === 'redis') && (
+                      <PDCPButton variant="secondary" size="sm" onClick={handleCreateRedis}>
+                        <Plus className="w-4 h-4" />
+                        Add Redis
+                      </PDCPButton>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CutoutPanel>
 

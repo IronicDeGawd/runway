@@ -69,10 +69,40 @@ export function useServices() {
     }
   });
 
+  const createMutation = useMutation({
+    mutationFn: async (type: string) => {
+        await api.post(`/services/create`, { type });
+    },
+    onSuccess: () => {
+        toast.success(`Service created successfully`);
+        queryClient.invalidateQueries({ queryKey: ['services'] });
+    },
+    onError: (err: any) => {
+        toast.error(err.response?.data?.error || `Failed to create service`);
+        throw err;
+    }
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (type: string) => {
+        await api.delete(`/services/${type}`);
+    },
+    onSuccess: () => {
+        toast.success(`Service deleted successfully`);
+        queryClient.invalidateQueries({ queryKey: ['services'] });
+    },
+    onError: (err: any) => {
+        toast.error(err.response?.data?.error || `Failed to delete service`);
+        throw err;
+    }
+  });
+
   return {
     services: services || [],
     isLoading,
-    startService: (id: string) => startMutation.mutateAsync(id), // ID is type (postgres/redis) in our simpler model
-    stopService: (id: string) => stopMutation.mutateAsync(id)
+    startService: (id: string) => startMutation.mutateAsync(id),
+    stopService: (id: string) => stopMutation.mutateAsync(id),
+    createService: (type: string) => createMutation.mutateAsync(type),
+    deleteService: (id: string) => deleteMutation.mutateAsync(id)
   };
 }

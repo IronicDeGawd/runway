@@ -183,8 +183,8 @@ export class PM2Service {
         cpu: p.monit.cpu,
         memory: p.monit.memory,
       }));
-    } catch (error) {
-      logger.error('Failed to list processes', error);
+    } catch (error: any) {
+      logger.error('Failed to list processes:', error?.message || error);
       return [];
     } finally {
       pm2.disconnect();
@@ -209,8 +209,8 @@ export class PM2Service {
           await this.startProject(project); // This connects/disconnects internally, might be inefficient in loop but safe
         }
       }
-    } catch (error) {
-      logger.error('Reconciliation failed', error);
+    } catch (error: any) {
+      logger.error('Reconciliation failed:', error?.message || error);
     } finally {
       pm2.disconnect();
     }

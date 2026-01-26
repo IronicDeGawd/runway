@@ -13,6 +13,8 @@ import { AppError } from '../middleware/errorHandler';
 import { envService } from './envService';
 import { activityLogger } from './activityLogger';
 import { eventBus } from '../events/eventBus';
+import { caddyConfigManager } from './caddyConfigManager';
+import { BuildDetector } from './buildDetector';
 
 const execAsync = util.promisify(exec);
 
@@ -70,53 +72,68 @@ export class DeploymentService {
   async deployProject(filePath: string, projectName: string, type: ProjectType): Promise<ProjectConfig> {
     const deployId = uuidv4();
     const stagingDir = path.join(TEMP_DIR, deployId);
+    let portAllocated = false;
+    let newPort: number | null = null;
     
     logger.info(`Starting deployment ${deployId} for ${projectName}`);
 
     try {
-      // 1. Extract
+      // 1. Extract zip
       await extractZip(filePath, stagingDir);
       
-      // 2. Validate (done during extraction mostly, but can add more here)
+      // 2. Validate package.json exists
       const pkgJsonPath = path.join(stagingDir, 'package.json');
       if (!await fs.pathExists(pkgJsonPath)) {
         throw new AppError('Invalid project: package.json missing', 400);
       }
 
-      // 3. Detect Package Manager
+      // 3. Detect package manager
       const pkgManager = await this.detectPackageManager(stagingDir);
 
-      // 4. Install Dependencies
+      // 4. Install dependencies
       await this.installDependencies(stagingDir, pkgManager);
 
-      // 5. Build (if required)
+      // 5. Build the project (if required)
       if (type === 'react' || type === 'next') {
-        // Need to pass projectId to buildProject for ENV loading.
         let existingProject = (await projectRegistry.getAll()).find(p => p.name === projectName);
-        let pid = existingProject ? existingProject.id : null; 
-
-        if (pid) {
-           await this.buildProject(stagingDir, pkgManager, pid);
-        } else {
-           // No ENVs for new project build
-           await this.buildProject(stagingDir, pkgManager, 'new-project-placeholder');
-        }
+        let pid = existingProject ? existingProject.id : 'new-project-placeholder';
+        await this.buildProject(stagingDir, pkgManager, pid);
       }
 
-      // 6. Allocate Port (if new)
+      // 6. ✅ CRITICAL FIX: Verify build output BEFORE proceeding
+      if (type === 'react' || type === 'next') {
+        const buildPath = await BuildDetector.verifyBuildOutput(stagingDir, type);
+        logger.info(`✅ Build verified: ${buildPath}`);
+      }
+
+      // 7. ✅ CRITICAL FIX: Allocate port AFTER successful build
       let project = (await projectRegistry.getAll()).find(p => p.name === projectName);
       let projectId = project ? project.id : uuidv4();
-      let port = project ? project.port : await portManager.allocatePort(projectId);
-
-      // 7. Atomic Switch
-      const targetDir = path.join(APPS_DIR, projectId);
+      let port: number;
       
+      if (project) {
+        port = project.port; // Reuse existing port
+        logger.info(`Reusing port ${port} for ${projectId}`);
+      } else {
+        port = await portManager.allocatePort(projectId);
+        newPort = port;
+        portAllocated = true;
+        logger.info(`Allocated port ${port} for ${projectId}`);
+      }
+
+      // 8. Stop existing process before directory swap
+      if (project && project.type !== 'react') {
+        await pm2Service.stopProject(projectId);
+      }
+
+      // 9. Atomic directory swap
+      const targetDir = path.join(APPS_DIR, projectId);
       if (await fs.pathExists(targetDir)) {
         await fs.remove(targetDir); 
       }
       await fs.move(stagingDir, targetDir);
 
-      // 8. Register / Update Project
+      // 10. Register / Update Project
       const newConfig: ProjectConfig = {
         id: projectId,
         name: projectName,
@@ -132,13 +149,18 @@ export class DeploymentService {
         await projectRegistry.create(newConfig);
       }
 
-      // 9. Start Process (if not static)
-      await pm2Service.startProject(newConfig);
+      // 11. Start PM2 process (if not static React)
+      if (type !== 'react') {
+        await pm2Service.startProject(newConfig);
+        
+        // Quick health check
+        await this.waitForProcessStart(newConfig);
+      }
 
-      // 10. Update Caddy
-      await import('./caddyService').then(m => m.caddyService.updateConfig());
+      // 12. ✅ CRITICAL FIX: Update Caddy with modular config
+      await caddyConfigManager.updateProjectConfig(newConfig);
 
-      logger.info(`Deployment successful for ${projectName} (${projectId})`);
+      logger.info(`✅ Deployment successful for ${projectName} (${projectId})`);
       
       // Log activity
       await activityLogger.log('deploy', projectName, 
@@ -163,12 +185,58 @@ export class DeploymentService {
       await activityLogger.log('error', projectName, 
         `Deployment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
       
-      // Cleanup staging
-      await fs.remove(stagingDir);
-      // Cleanup file
+      // ✅ CRITICAL FIX: Proper cleanup on failure
+      try {
+        // Remove staging directory
+        if (await fs.pathExists(stagingDir)) {
+          await fs.remove(stagingDir);
+        }
+        
+        // Release port if we allocated it
+        if (portAllocated && newPort) {
+          const projectId = (await projectRegistry.getAll()).find(p => p.name === projectName)?.id;
+          if (projectId) {
+            await portManager.releasePort(newPort);
+            logger.info(`Released port ${newPort}`);
+          }
+        }
+      } catch (cleanupError) {
+        logger.error('Cleanup failed', cleanupError);
+      }
+      
+      // Cleanup uploaded file
       await fs.remove(filePath);
       throw error;
     }
+  }
+
+  /**
+   * Wait for PM2 process to start and respond
+   */
+  private async waitForProcessStart(project: ProjectConfig): Promise<void> {
+    const maxWait = 30000; // 30 seconds
+    const startTime = Date.now();
+    
+    logger.info(`Waiting for ${project.name} to start...`);
+
+    while (Date.now() - startTime < maxWait) {
+      try {
+        const list = await pm2Service.getProcesses();
+        const proc = list.find((p: any) => p.name === project.id);
+        
+        if (proc && proc.status === 'online') {
+          logger.info(`✅ ${project.name} is running`);
+          return;
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        logger.warn('Error checking process status', error);
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
+
+    logger.warn(`${project.name} started but may not be fully ready`);
   }
 }
 
