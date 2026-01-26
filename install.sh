@@ -191,7 +191,15 @@ if [ ! -f "$INSTALL_DIR/data/auth.json" ]; then
     node "$INSTALL_DIR/server/scripts/setup-auth.js"
     log_success "Admin credentials configured"
 else
-    log_info "Auth file already exists, skipping..."
+    log_info "Auth file already exists."
+    read -p "Do you want to change the admin password? (y/n) " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        node "$INSTALL_DIR/server/scripts/setup-auth.js"
+        log_success "Admin credentials updated"
+    else
+        log_info "Keeping existing credentials"
+    fi
 fi
 
 # PM2 Setup
@@ -232,13 +240,21 @@ log_info "Generating Caddyfile..."
 cat > "$INSTALL_DIR/data/Caddyfile" << 'EOF'
 # Control Plane UI
 :80 {
+    # 1. API: High Priority, Explicit Terminal
     handle /api/* {
         reverse_proxy 127.0.0.1:3000
     }
+    
+    handle /socket.io/* {
+        reverse_proxy 127.0.0.1:3000
+    }
 
-    root * /opt/pdcp/ui/dist
-    try_files {path} /index.html
-    file_server
+    # 2. Frontend: Catch-all Fallback
+    handle {
+        root * /opt/pdcp/ui/dist
+        try_files {path} /index.html
+        file_server
+    }
 }
 EOF
 

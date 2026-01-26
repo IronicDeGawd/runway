@@ -4,10 +4,15 @@
         "rootDir": "./src",
         "module": "commonjs",
         "target": "es2020",
+        "declaration": true,
         "composite": true,
         "strict": true,
         "esModuleInterop": true,
-        "skipLibCheck": true
+        "skipLibCheck": true,
+        "tsBuildInfoFile": "./dist/.tsbuildinfo",
+        "paths": {
+            "@pdcp/shared": ["../shared/src"]
+        }
     },
     "references": [
         {

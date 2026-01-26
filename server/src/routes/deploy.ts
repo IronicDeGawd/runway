@@ -5,9 +5,9 @@ import { validateRequest } from '../middleware/validateRequest';
 import { requireAuth } from '../middleware/auth';
 import { deploymentService } from '../services/deploymentService';
 import { projectRegistry } from '../services/projectRegistry';
+import { caddyConfigManager } from '../services/caddyConfigManager';
 import { AppError } from '../middleware/errorHandler';
 import { ProjectType } from '@pdcp/shared';
-// import { caddyService } from '../services/caddyService'; // Dynamic import used in code
 
 const router = Router();
 const upload = multer({ dest: '../temp_uploads/' });
@@ -74,10 +74,29 @@ router.patch('/:id', requireAuth, validateRequest(UpdateConfigSchema), async (re
      if (!project) throw new AppError('Project not found', 404);
      
      if (req.body.domains) {
+       // Validate domain format
+       for (const domain of req.body.domains) {
+         const domainRegex = /^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/i;
+         if (!domainRegex.test(domain)) {
+           throw new AppError(`Invalid domain format: ${domain}`, 400);
+         }
+       }
+       
+       // Check for conflicts with other projects
+       const allProjects = await projectRegistry.getAll();
+       const otherProjects = allProjects.filter(p => p.id !== project.id);
+       const existingDomains = otherProjects.flatMap(p => p.domains || []);
+       const conflicts = req.body.domains.filter((d: string) => existingDomains.includes(d));
+       
+       if (conflicts.length > 0) {
+         throw new AppError(`Domains already in use: ${conflicts.join(', ')}`, 409);
+       }
+       
        project.domains = req.body.domains;
        await projectRegistry.update(project.id, project);
-       // Update Caddy
-       await import('../services/caddyService').then(m => m.caddyService.updateConfig());
+       
+       // Update Caddy with modular config
+       await caddyConfigManager.updateProjectConfig(project);
      }
      
      res.json({ success: true, data: project });

@@ -1,70 +1,105 @@
+#!/usr/bin/env node
+
+/**
+ * Interactive setup script for admin authentication
+ * Creates initial admin credentials in data/auth.json
+ */
+
+const readline = require('readline');
 const fs = require('fs');
 const path = require('path');
-const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const readline = require('readline');
+const bcrypt = require('bcryptjs');
 
-const DATA_DIR = path.resolve(__dirname, '../../data');
-const AUTH_FILE = path.join(DATA_DIR, 'auth.json');
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout
+});
 
-// Ensure data dir
-if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+// Determine project root (script is in server/scripts, root is ../../)
+const projectRoot = path.resolve(__dirname, '../..');
+const authFilePath = path.join(projectRoot, 'data', 'auth.json');
+
+console.log('==============================================');
+console.log('  PDCP Admin Setup');
+console.log('==============================================\n');
+
+function question(query) {
+  return new Promise(resolve => rl.question(query, resolve));
 }
 
-const args = process.argv.slice(2);
+async function hashPassword(password) {
+  // Use bcrypt for password hashing (same as auth.ts)
+  return await bcrypt.hash(password, 10);
+}
 
-// If password provided as argument, use it (for non-interactive mode)
-if (args[0]) {
-    setupAuth(args[0]);
-} else {
-    // Interactive mode - ask for password
-    const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout
-    });
+function generateJwtSecret() {
+  return crypto.randomBytes(64).toString('hex');
+}
 
-    console.log('\n=== PDCP Admin Setup ===\n');
-    console.log('Create admin credentials for the control panel.\n');
+async function setup() {
+  try {
+    // Check if auth.json already exists
+    if (fs.existsSync(authFilePath)) {
+      const overwrite = await question('Auth file already exists. Overwrite? (y/n): ');
+      if (overwrite.toLowerCase() !== 'y') {
+        console.log('Setup cancelled.');
+        rl.close();
+        process.exit(0);
+      }
+    }
+
+    // Get username
+    let username = await question('Enter admin username (default: admin): ');
+    username = username.trim() || 'admin';
+
+    // Get password
+    let password = await question('Enter admin password: ');
+    while (!password || password.length < 6) {
+      console.log('Password must be at least 6 characters long.');
+      password = await question('Enter admin password: ');
+    }
+
+    // Confirm password
+    const confirmPassword = await question('Confirm password: ');
+    if (password !== confirmPassword) {
+      console.log('Passwords do not match. Setup failed.');
+      rl.close();
+      process.exit(1);
+    }
+
+    // Hash password using bcrypt
+    const passwordHash = await hashPassword(password);
     
-    rl.question('Enter admin password (min 8 characters): ', (password) => {
-        if (!password || password.length < 8) {
-            console.error('Error: Password must be at least 8 characters');
-            process.exit(1);
-        }
-        
-        rl.question('Confirm password: ', (confirm) => {
-            rl.close();
-            
-            if (password !== confirm) {
-                console.error('Error: Passwords do not match');
-                process.exit(1);
-            }
-            
-            setupAuth(password);
-        });
-    });
-}
+    // Generate JWT secret
+    const jwtSecret = generateJwtSecret();
 
-function setupAuth(password) {
-    console.log('\nSetting up authentication...');
-
-    const salt = bcrypt.genSaltSync(10);
-    const hash = bcrypt.hashSync(password, salt);
-    const jwtSecret = crypto.randomBytes(32).toString('hex');
-
-    const config = {
-        username: 'admin',
-        passwordHash: hash,
-        jwtSecret: jwtSecret,
-        createdAt: new Date().toISOString()
+    // Create auth object matching AuthConfig interface
+    const authData = {
+      username: username,
+      passwordHash: passwordHash,
+      jwtSecret: jwtSecret
     };
 
-    fs.writeFileSync(AUTH_FILE, JSON.stringify(config, null, 2));
+    // Ensure data directory exists
+    const dataDir = path.dirname(authFilePath);
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
 
-    console.log(`\n✓ Auth configured successfully`);
-    console.log(`  Location: ${AUTH_FILE}`);
-    console.log(`  Username: admin`);
-    console.log(`  Password: ${password.replace(/./g, '*')}`);
-    console.log('\nIMPORTANT: Save these credentials securely!\n');
+    // Write auth file
+    fs.writeFileSync(authFilePath, JSON.stringify(authData, null, 2));
+    console.log(`\n✓ Admin credentials saved to ${authFilePath}`);
+    console.log(`✓ Username: ${username}`);
+    console.log(`✓ JWT secret generated`);
+    console.log('\nSetup complete!');
+
+  } catch (error) {
+    console.error('Error during setup:', error);
+    process.exit(1);
+  } finally {
+    rl.close();
+  }
 }
+
+setup();
