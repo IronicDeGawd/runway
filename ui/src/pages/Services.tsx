@@ -72,7 +72,9 @@ function ServiceCard({ service, onStart, onStop }: { service: Service; onStart: 
           </div>
           <div>
             <span className="text-xs text-text-muted">Memory</span>
-            <p className="text-sm font-medium text-text-primary">{service.memory}MB</p>
+            <p className="text-sm font-medium text-text-primary">
+              {service.status === 'running' ? `${service.memory || 0}MB` : '-'}
+            </p>
           </div>
         </div>
 
@@ -148,6 +150,12 @@ export default function ServicesPage() {
               {[1, 2].map((i) => (
                 <Skeleton key={i} className="h-64" />
               ))}
+            </div>
+          ) : services.length === 0 ? (
+            <div className="text-center py-12">
+              <Server className="w-12 h-12 text-text-muted mx-auto mb-4 opacity-50" />
+              <p className="text-text-muted text-sm">No services available</p>
+              <p className="text-text-muted text-xs mt-1">Make sure Docker is installed and running</p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

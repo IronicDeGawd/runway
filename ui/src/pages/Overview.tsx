@@ -151,9 +151,9 @@ export default function OverviewPage() {
                 label="System Health"
                 sublabel="All services responding within normal parameters"
                 secondaryStats={[
-                  { label: "Uptime", value: metrics.uptime, suffix: "%" },
-                  { label: "Requests/min", value: "2.4k", suffix: "" },
-                  { label: "Avg Response", value: "124", suffix: "ms" },
+                  { label: "Uptime", value: Math.floor(metrics.uptime / 3600), suffix: "h" },
+                  { label: "Projects", value: runningProjects, suffix: "" },
+                  { label: "Memory", value: `${metrics.usedMemory}/${metrics.totalMemory}`, suffix: "GB" },
                 ]}
               />
             )}
@@ -198,7 +198,7 @@ export default function OverviewPage() {
                     <span className="text-[36px] font-bold text-text-primary tabular-nums leading-none">
                       {Math.round(metrics.disk)}%
                     </span>
-                    <span className="text-xs text-text-muted">of 100GB</span>
+                    <span className="text-xs text-text-muted">used</span>
                   </div>
                   <div className="h-2 bg-surface rounded-full overflow-hidden">
                     <motion.div

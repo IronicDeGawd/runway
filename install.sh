@@ -31,13 +31,6 @@ log_error() {
 
 echo -e "${BLUE}Starting PDCP Installation...${NC}"
 
-# Check for root
-if [ "$EUID" -ne 0 ]; then
-    log_error "This script must be run as root"
-    echo "Usage: sudo bash install.sh"
-    exit 1
-fi
-
 # Check if running on supported OS
 if [ ! -f /etc/os-release ]; then
     log_error "Cannot detect OS. This script supports Ubuntu/Debian only."
@@ -57,19 +50,20 @@ fi
 # Directory Setup
 INSTALL_DIR="/opt/pdcp"
 log_info "Creating directory structure at ${INSTALL_DIR}..."
-mkdir -p "$INSTALL_DIR"
-mkdir -p "$INSTALL_DIR/apps"
-mkdir -p "$INSTALL_DIR/data"
-mkdir -p "$INSTALL_DIR/logs"
-mkdir -p "$INSTALL_DIR/temp_uploads"
+sudo mkdir -p "$INSTALL_DIR"
+sudo mkdir -p "$INSTALL_DIR/apps"
+sudo mkdir -p "$INSTALL_DIR/data"
+sudo mkdir -p "$INSTALL_DIR/logs"
+sudo mkdir -p "$INSTALL_DIR/temp_uploads"
+sudo chown -R $USER:$USER "$INSTALL_DIR"
 
 # Dependency Checks
 log_info "Checking dependencies..."
 
 if ! command -v node &> /dev/null; then
     log_info "Node.js not found. Installing Node 20.x..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt-get install -y nodejs
+    curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -
+    sudo apt-get install -y nodejs
     log_success "Node.js installed: $(node --version)"
 else
     log_success "Node.js already installed: $(node --version)"
@@ -77,7 +71,7 @@ fi
 
 if ! command -v pm2 &> /dev/null; then
     log_info "Installing PM2..."
-    npm install -g pm2
+    sudo npm install -g pm2
     log_success "PM2 installed: $(pm2 --version)"
 else
     log_success "PM2 already installed: $(pm2 --version)"
@@ -85,11 +79,11 @@ fi
 
 if ! command -v caddy &> /dev/null; then
     log_info "Installing Caddy..."
-    apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
-    apt-get update
-    apt-get install -y caddy
+    sudo apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+    sudo apt-get update
+    sudo apt-get install -y caddy
     log_success "Caddy installed: $(caddy version)"
 else
     log_success "Caddy already installed: $(caddy version)"
@@ -97,7 +91,7 @@ fi
 
 if ! command -v rsync &> /dev/null; then
     log_info "Installing rsync..."
-    apt-get install -y rsync
+    sudo apt-get install -y rsync
     log_success "rsync installed"
 else
     log_success "rsync already installed"
@@ -112,11 +106,11 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     if ! command -v docker &> /dev/null; then
         log_info "Installing Docker..."
         # Add Docker's official GPG key:
-        apt-get update
-        apt-get install -y ca-certificates curl gnupg
-        install -m 0755 -d /etc/apt/keyrings
-        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-        chmod a+r /etc/apt/keyrings/docker.gpg
+        sudo apt-get update
+        sudo apt-get install -y ca-certificates curl gnupg
+        sudo install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+        sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
         # Add the repository to Apt sources:
         # Detect distribution
@@ -140,21 +134,25 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         echo \
           "deb [arch=\"$(dpkg --print-architecture)\" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DOCKER_DISTRO} \
           ${VERSION_CODENAME} stable" | \
-          tee /etc/apt/sources.list.d/docker.list > /dev/null
+          sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
         
-        apt-get update
-        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+        sudo apt-get update
+        sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
         log_success "Docker installed: $(docker --version)"
+        
+        # Add current user to docker group
+        sudo usermod -aG docker $USER
+        log_info "Added $USER to docker group (log out and back in for this to take effect)"
     else
         log_success "Docker is already installed: $(docker --version)"
     fi
     
     # Enable Docker service
-    systemctl enable docker
-    systemctl start docker
+    sudo systemctl enable docker
+    sudo systemctl start docker
     
     # Verify Docker is running
-    if systemctl is-active --quiet docker; then
+    if sudo systemctl is-active --quiet docker; then
         log_success "Docker service is running"
     else
         log_error "Docker service failed to start"
@@ -178,9 +176,9 @@ rsync -a \
 log_success "Files copied successfully"
 
 # Build
-log_info "Building project (this may take a few minutes)..."
+log_info "Building project..."
 cd "$INSTALL_DIR"
-# Clean potential artifacts
+# Clean and install dependencies
 rm -rf node_modules dist server/dist ui/dist shared/dist
 npm install --loglevel=error
 npm run build
@@ -206,9 +204,9 @@ log_success "PM2 process started"
 
 # Configure PM2 startup
 log_info "Configuring PM2 to start on boot..."
-STARTUP_CMD=$(pm2 startup systemd -u root --hp /root | grep "sudo env")
+STARTUP_CMD=$(pm2 startup systemd -u $USER --hp $HOME | grep "sudo")
 if [ -n "$STARTUP_CMD" ]; then
-    eval "${STARTUP_CMD/sudo /}"
+    eval "$STARTUP_CMD"
     pm2 save
     log_success "PM2 startup configured"
 else
@@ -217,7 +215,7 @@ fi
 
 sleep 2
 
-if systemctl is-enabled pm2-root >/dev/null 2>&1; then
+if systemctl is-enabled pm2-$USER >/dev/null 2>&1; then
     log_success "PM2 systemd service enabled"
 else
     log_warning "PM2 systemd service not auto-configured"
@@ -249,18 +247,18 @@ log_success "Caddyfile created"
 
 # Configure Caddy to use our Caddyfile
 log_info "Setting up Caddy service..."
-mkdir -p /etc/caddy
-cat > /etc/caddy/Caddyfile << 'EOF'
+sudo mkdir -p /etc/caddy
+cat <<'EOF' | sudo tee /etc/caddy/Caddyfile > /dev/null
 import /opt/pdcp/data/Caddyfile
 EOF
 
 # Reload Caddy configuration
-systemctl enable caddy
-systemctl restart caddy
+sudo systemctl enable caddy
+sudo systemctl restart caddy
 
 # Verify Caddy is running
 sleep 2
-if systemctl is-active --quiet caddy; then
+if sudo systemctl is-active --quiet caddy; then
     log_success "Caddy is running"
 else
     log_warning "Caddy failed to start"
@@ -272,15 +270,15 @@ if command -v ufw &> /dev/null; then
     log_info "Configuring firewall (UFW)..."
     
     # Enable UFW if not already enabled (with SSH allowed first)
-    if ! ufw status | grep -q "Status: active"; then
-        ufw --force enable
+    if ! sudo ufw status | grep -q "Status: active"; then
+        sudo ufw --force enable
     fi
     
     # Allow SSH (prevent lockout)
-    ufw allow 22/tcp > /dev/null 2>&1
+    sudo ufw allow 22/tcp > /dev/null 2>&1
     
     # Allow HTTP for dashboard
-    ufw allow 80/tcp > /dev/null 2>&1
+    sudo ufw allow 80/tcp > /dev/null 2>&1
     
     # Optionally allow HTTPS for future
     ufw allow 443/tcp > /dev/null 2>&1

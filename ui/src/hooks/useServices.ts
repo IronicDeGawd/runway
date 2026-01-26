@@ -12,6 +12,7 @@ export interface Service {
   version: string;
   connectionString: string;
   port: number;
+  memory?: number;
 }
 
 export function useServices() {

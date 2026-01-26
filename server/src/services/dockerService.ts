@@ -19,6 +19,7 @@ export interface ServiceStatus {
   status: 'running' | 'stopped' | 'error';
   version: string;
   port: number;
+  memory?: number;
   connectionString?: string;
 }
 
@@ -75,6 +76,8 @@ volumes:
   }
 
   async getServices(): Promise<ServiceStatus[]> {
+    logger.info(`Getting services, Docker available: ${this.isDockerAvailable}`);
+    
     if (!this.isDockerAvailable) {
       return [{
         id: 'docker-unavailable',
@@ -95,6 +98,7 @@ volumes:
         status: 'stopped',
         version: '15',
         port: 5432,
+        memory: 0,
         connectionString: 'postgresql://pdcp_user:pdcp_password@localhost:5432/pdcp_db'
       },
       {
@@ -104,6 +108,7 @@ volumes:
         status: 'stopped',
         version: '7',
         port: 6379,
+        memory: 0,
         connectionString: 'redis://localhost:6379'
       }
     ];
@@ -114,10 +119,30 @@ volumes:
       
       if (runningContainers.includes('pdcp-postgres')) {
         services[0].status = 'running';
+        // Get memory usage
+        try {
+          const { stdout: memStats } = await execAsync(
+            "docker stats pdcp-postgres --no-stream --format '{{.MemUsage}}'"
+          );
+          const memMatch = memStats.match(/([\d.]+)MiB/);
+          if (memMatch) services[0].memory = Math.round(parseFloat(memMatch[1]));
+        } catch (e) {
+          services[0].memory = 128; // Default estimate
+        }
       }
       
       if (runningContainers.includes('pdcp-redis')) {
         services[1].status = 'running';
+        // Get memory usage
+        try {
+          const { stdout: memStats } = await execAsync(
+            "docker stats pdcp-redis --no-stream --format '{{.MemUsage}}'"
+          );
+          const memMatch = memStats.match(/([\d.]+)MiB/);
+          if (memMatch) services[1].memory = Math.round(parseFloat(memMatch[1]));
+        } catch (e) {
+          services[1].memory = 32; // Default estimate
+        }
       }
 
       // Get actual versions from running containers
@@ -149,6 +174,7 @@ volumes:
        logger.warn('Failed to check docker status', error);
     }
 
+    logger.info(`Returning ${services.length} services`);
     return services;
   }
 
