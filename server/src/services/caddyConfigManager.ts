@@ -10,9 +10,8 @@ import { BuildDetector } from './buildDetector';
 const execAsync = util.promisify(exec);
 
 const APPS_DIR = path.resolve(process.cwd(), '../apps');
-// Use /opt/pdcp/data/caddy for configuration files (matches import path in Caddyfile)
 const CADDY_DATA_DIR = '/opt/pdcp/data/caddy';
-const CADDYFILE_PATH = '/etc/caddy/Caddyfile';
+const CADDYFILE_PATH = path.join(CADDY_DATA_DIR, 'Caddyfile');
 const SITES_DIR = path.join(CADDY_DATA_DIR, 'sites');
 
 export class CaddyConfigManager {
@@ -22,11 +21,14 @@ export class CaddyConfigManager {
    */
   async initialize(): Promise<void> {
     try {
-      // Ensure sites directory exists (Caddyfile is managed by install.sh)
+      // Ensure sites directory exists
       await fs.ensureDir(SITES_DIR);
       logger.info(`Caddy sites directory ready at ${SITES_DIR}`);
+      
+      // Regenerate main Caddyfile with current projects
+      await this.updateMainCaddyfile();
     } catch (error) {
-      logger.error('Failed to initialize Caddy sites directory', error);
+      logger.error('Failed to initialize Caddy config', error);
       throw new AppError('Caddy initialization failed', 500);
     }
   }
@@ -43,7 +45,7 @@ export class CaddyConfigManager {
       await fs.writeFile(configPath, config);
       logger.info(`Updated Caddy config for ${project.name} at ${configPath}`);
 
-      // Update main Caddyfile to include this project's snippet
+      // Update main Caddyfile to include this project
       await this.updateMainCaddyfile();
       
       await this.reloadCaddy();
@@ -54,18 +56,23 @@ export class CaddyConfigManager {
   }
 
   /**
-   * Regenerate main Caddyfile with all active project imports
+   * Regenerate main Caddyfile with all active projects
    */
   private async updateMainCaddyfile(): Promise<void> {
     try {
-      // Get all project config files and import them directly
-      const files = await fs.readdir(SITES_DIR);
-      const projectFiles = files
-        .filter(f => f.endsWith('.caddy'))
-        .map(f => `${SITES_DIR}/${f}`);
+      // Read all project config files
+      const files = await fs.readdir(SITES_DIR).catch(() => []);
+      const projectHandlers: string[] = [];
+      
+      for (const file of files.filter(f => f.endsWith('.caddy'))) {
+        const content = await fs.readFile(path.join(SITES_DIR, file), 'utf-8');
+        // Each project config is already properly formatted
+        projectHandlers.push(content.trim());
+      }
 
-      // Generate import statements - files contain handle_path blocks directly
-      const projectImports = projectFiles.map(f => `  import ${f}`).join('\n');
+      const projectSection = projectHandlers.length > 0 
+        ? '\n  # Deployed projects\n  ' + projectHandlers.join('\n  \n  ')
+        : '';
 
       const mainConfig = `{
   admin off
@@ -73,6 +80,37 @@ export class CaddyConfigManager {
 }
 
 :80 {
+  # WebSocket support for realtime updates
+  @websocket_realtime {
+    path /api/realtime*
+  }
+  handle @websocket_realtime {
+    reverse_proxy 127.0.0.1:3000 {
+      header_up Upgrade {http.request.header.Upgrade}
+      header_up Connection {http.request.header.Connection}
+      header_up Host {http.request.header.Host}
+      header_up X-Real-IP {http.request.header.X-Real-IP}
+      header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+      header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+    }
+  }
+  
+  # WebSocket support for project logs
+  @websocket_logs {
+    path /api/logs/*
+  }
+  handle @websocket_logs {
+    reverse_proxy 127.0.0.1:3000 {
+      header_up Upgrade {http.request.header.Upgrade}
+      header_up Connection {http.request.header.Connection}
+      header_up Host {http.request.header.Host}
+      header_up X-Real-IP {http.request.header.X-Real-IP}
+      header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+      header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+    }
+  }
+  
+  # Regular API requests
   handle /api/* {
     reverse_proxy 127.0.0.1:3000 {
       transport http {
@@ -81,9 +119,9 @@ export class CaddyConfigManager {
       }
     }
   }
+${projectSection}
   
-${projectImports}
-  
+  # Admin panel UI (fallback - must be last)
   handle {
     root * /opt/pdcp/ui/dist
     try_files {path} /index.html
@@ -94,7 +132,7 @@ ${projectImports}
 `;
 
       await fs.writeFile(CADDYFILE_PATH, mainConfig);
-      logger.info('Updated main Caddyfile with active project imports');
+      logger.info('Updated main Caddyfile with active projects');
     } catch (error) {
       logger.error('Failed to update main Caddyfile', error);
       throw error;
@@ -112,19 +150,20 @@ ${projectImports}
         await fs.remove(configPath);
         logger.info(`Deleted Caddy config for ${projectId}`);
         
-        // Update main Caddyfile to remove this project's import
+        // Update main Caddyfile to remove this project
         await this.updateMainCaddyfile();
         
         await this.reloadCaddy();
       }
     } catch (error) {
       logger.error(`Failed to delete Caddy config for ${projectId}`, error);
-      // Don't throw - project deletion should continue even if Caddy cleanup fails
+      // Don't throw - project deletion should continue
     }
   }
 
   /**
    * Generate Caddy configuration block for a single project
+   * Supports both domain-based and path-based routing
    */
   private async generateProjectConfig(project: ProjectConfig): Promise<string> {
     let config = '';
@@ -139,6 +178,7 @@ ${projectImports}
           
           if (buildPath) {
             config += `
+# Domain: ${domain}
 ${domain} {
   root * ${buildPath}
   file_server
@@ -155,6 +195,7 @@ ${domain} {
         } else {
           // Dynamic app - reverse proxy to PM2
           config += `
+# Domain: ${domain}
 ${domain} {
   reverse_proxy 127.0.0.1:${project.port}
   
@@ -169,36 +210,34 @@ ${domain} {
       }
     }
 
-    // Generate config snippet for path-based routing
-    // Direct handler (not wrapped in snippet definition) so import works correctly
-    const projectPath = `/app/${project.name}`;
+    // 2. Path-based routing (always available, for IP access)
+    // Generate config snippet that will be embedded in the main :80 block
+    const projectPath = `/app/${project.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     
     if (project.type === 'react') {
       const buildPath = await BuildDetector.detectBuildOutput(projectDir, project.type);
       
       if (buildPath) {
-        config = `handle_path ${projectPath}* {
-  root * ${buildPath}
-  try_files {path} /index.html
-  file_server
-  encode gzip
-}
-`;
+        config += `handle_path ${projectPath}* {
+    root * ${buildPath}
+    try_files {path} /index.html
+    file_server
+    encode gzip
+  }`;
       }
     } else {
       // Node/Next apps - reverse proxy to PM2 process
-      config = `handle_path ${projectPath}* {
-  reverse_proxy 127.0.0.1:${project.port} {
-    # Pass original path info to backend
-    header_up X-Forwarded-Prefix ${projectPath}
-    header_up X-Original-URI {uri}
-  }
-  encode gzip
-}
-`;
+      config += `handle_path ${projectPath}* {
+    reverse_proxy 127.0.0.1:${project.port} {
+      # Pass original path info to backend
+      header_up X-Forwarded-Prefix ${projectPath}
+      header_up X-Original-URI {uri}
+    }
+    encode gzip
+  }`;
     }
 
-    return config;
+    return config.trim();
   }
 
   /**
@@ -206,6 +245,12 @@ ${domain} {
    */
   private async reloadCaddy(): Promise<void> {
     try {
+      // Validate first
+      const isValid = await this.validateConfig();
+      if (!isValid) {
+        throw new Error('Caddy config validation failed');
+      }
+
       // Use systemctl since admin API is disabled
       const { stdout, stderr } = await execAsync('sudo systemctl restart caddy');
       
@@ -232,10 +277,21 @@ ${domain} {
    */
   async validateConfig(): Promise<boolean> {
     try {
-      await execAsync(`caddy validate --config ${CADDYFILE_PATH}`);
+      const { stdout, stderr } = await execAsync(`caddy validate --config ${CADDYFILE_PATH} 2>&1`);
+      
+      // Check for errors in output
+      const output = (stdout + stderr).toLowerCase();
+      if (output.includes('error')) {
+        logger.error('Caddy validation failed:', stdout + stderr);
+        return false;
+      }
+      
       return true;
-    } catch (error) {
-      logger.error('Caddy config validation failed', error);
+    } catch (error: any) {
+      logger.error('Caddy config validation failed:', {
+        message: error.message,
+        output: error.stdout || error.stderr
+      });
       return false;
     }
   }
@@ -269,6 +325,15 @@ ${domain} {
     }
 
     return { installed, running };
+  }
+
+  /**
+   * Get URL for accessing a deployed project
+   */
+  getProjectUrl(project: ProjectConfig, serverIp?: string): string {
+    const ip = serverIp || 'localhost';
+    const projectPath = `/app/${project.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+    return `http://${ip}${projectPath}`;
   }
 }
 
