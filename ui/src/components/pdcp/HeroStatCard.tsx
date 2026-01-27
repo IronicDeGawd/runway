@@ -162,7 +162,7 @@ export function HeroStatCard({
               transition={{ duration: 0.5, delay: 0.3 }}
             >
               <span className={cn(
-                "text-[56px] font-bold tabular-nums leading-none tracking-tight",
+                "text-[40px] font-bold tabular-nums leading-none tracking-tight",
                 getHealthColor(displayValue)
               )}>
                 {displayValue.toFixed(1)}

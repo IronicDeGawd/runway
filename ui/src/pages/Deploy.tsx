@@ -23,10 +23,9 @@ import { useDeployFlow, DeployStep } from "@/hooks/useDeployFlow";
 import { cn } from "@/lib/utils";
 
 const runtimes = [
-  { id: "node", label: "Node.js", icon: Server, description: "JavaScript/TypeScript runtime" },
-  { id: "python", label: "Python", icon: Code, description: "Python 3.x applications" },
-  { id: "static", label: "Static", icon: Globe, description: "HTML, CSS, JS files" },
-  { id: "docker", label: "Docker", icon: Zap, description: "Custom container" },
+  { id: "react", label: "React", icon: Globe, description: "React / Vite / CRA apps" },
+  { id: "next", label: "Next.js", icon: Server, description: "Next.js framework" },
+  { id: "node", label: "Node.js", icon: Code, description: "Express / Node.js apps" },
 ];
 
 const steps = [
@@ -39,7 +38,7 @@ const steps = [
 export default function DeployPage() {
   const navigate = useNavigate();
   const { state, isDeploying, startDeploy, confirmConfig, reset } = useDeployFlow();
-  const [selectedRuntime, setSelectedRuntime] = React.useState("node");
+  const [selectedRuntime, setSelectedRuntime] = React.useState("react");
   const [projectName, setProjectName] = React.useState("");
   const [dragOver, setDragOver] = React.useState(false);
   const [uploadedFile, setUploadedFile] = React.useState<File | null>(null);
@@ -65,6 +64,8 @@ export default function DeployPage() {
   const handleStartUpload = () => {
     if (uploadedFile) {
       startDeploy(uploadedFile, { runtime: selectedRuntime, name: projectName });
+    } else {
+      console.log('No file uploaded!');
     }
   };
 
@@ -141,9 +142,8 @@ export default function DeployPage() {
               </div>
 
               {/* Runtime selection */}
-              <FormField label="Select Runtime">
-                <div className="grid grid-cols-2 gap-3">
-                  {runtimes.map((runtime) => (
+              <FormField label="Select Project Type">
+                <div className="grid grid-cols-3 gap-3">{runtimes.map((runtime) => (
                     <motion.button
                       key={runtime.id}
                       type="button"
@@ -187,7 +187,9 @@ export default function DeployPage() {
               {/* Action */}
               <div className="flex justify-end">
                 <PDCPButton
-                  onClick={handleStartUpload}
+                  onClick={() => {
+                    handleStartUpload();
+                  }}
                   disabled={!uploadedFile || !projectName}
                 >
                   Continue
@@ -238,7 +240,7 @@ export default function DeployPage() {
             </motion.div>
           )}
 
-          {(state.step === "build" || state.step === "deploy") && (
+          {(state.step === "build" || state.step === "deploy") && !state.error && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -259,6 +261,43 @@ export default function DeployPage() {
               <ProgressBar value={state.progress} size="md" />
 
               <Terminal logs={state.logs} maxHeight="250px" streaming />
+            </motion.div>
+          )}
+
+          {state.error && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="space-y-6"
+            >
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", delay: 0.2 }}
+                className="w-20 h-20 rounded-full bg-status-stopped/20 flex items-center justify-center mx-auto"
+              >
+                <div className="w-10 h-10 text-status-stopped flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-10 h-10">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+              </motion.div>
+
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-text-primary">Deployment Failed</h3>
+                <p className="text-text-muted mt-1">{state.error}</p>
+              </div>
+
+              <Terminal logs={state.logs} maxHeight="250px" />
+
+              <div className="flex justify-center gap-3">
+                <PDCPButton variant="secondary" onClick={reset}>
+                  Start Over
+                </PDCPButton>
+                <PDCPButton onClick={confirmConfig} disabled={isDeploying}>
+                  Retry Deployment
+                </PDCPButton>
+              </div>
             </motion.div>
           )}
 
@@ -283,15 +322,11 @@ export default function DeployPage() {
               </div>
 
               <div className="bg-surface rounded-lg p-4">
-                <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Your URL</p>
-                <a
-                  href={`https://${projectName}.pdcp.local`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-accent-primary hover:underline font-medium"
-                >
-                  https://{projectName}.pdcp.local
-                </a>
+                <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Your Application</p>
+                <p className="text-accent-primary font-medium">
+                  Your project is deployed and accessible on the configured port
+                </p>
+                <p className="text-xs text-text-muted mt-1">View details in the Projects page</p>
               </div>
 
               <div className="flex justify-center gap-3">

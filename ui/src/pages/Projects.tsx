@@ -148,9 +148,9 @@ export default function ProjectsPage() {
                     {/* Card content */}
                     <div className="px-4 pb-3 space-y-2">
                       <div className="flex items-center gap-2 text-sm">
-                        <span className="text-text-muted">Domain:</span>
+                        <span className="text-text-muted">URL:</span>
                         <a
-                          href={`https://${project.domain}`}
+                          href={`http://${project.domain}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-accent-primary hover:underline truncate flex items-center gap-1"

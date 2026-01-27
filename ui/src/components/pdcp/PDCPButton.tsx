@@ -70,6 +70,7 @@ const PDCPButton = React.forwardRef<HTMLButtonElement, PDCPButtonProps>(
         disabled={disabled || loading}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
+        {...props}
       >
         {loading ? (
           <Loader2 className="h-4 w-4 animate-spin" />

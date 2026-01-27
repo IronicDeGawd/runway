@@ -39,9 +39,9 @@ export default function ProjectDetailsPage() {
   const { envVars, isLoading: envLoading } = useProjectEnv(id);
   const { logs, isConnected, clearLogs } = useProjectLogs(id, activeTab === "logs");
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (project) {
-      deleteProject(project.id);
+      await deleteProject(project.id);
       navigate("/projects");
     }
   };
@@ -94,7 +94,7 @@ export default function ProjectDetailsPage() {
               </div>
               <div className="flex items-center gap-2 mt-1 text-sm text-text-muted">
                 <a
-                  href={`https://${project.domain}`}
+                  href={`http://${project.domain}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-accent-primary hover:underline flex items-center gap-1"
@@ -102,8 +102,6 @@ export default function ProjectDetailsPage() {
                   {project.domain}
                   <ExternalLink className="w-3 h-3" />
                 </a>
-                <span>·</span>
-                <span>Port {project.port}</span>
               </div>
             </div>
           </div>

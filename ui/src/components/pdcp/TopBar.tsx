@@ -8,9 +8,12 @@ import {
   User, 
   ChevronDown,
   LogOut,
-  HelpCircle
+  HelpCircle,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useWebSocket } from "@/contexts/WebSocketContext";
 
 interface TopBarProps {
   className?: string;
@@ -20,6 +23,7 @@ export function TopBar({ className }: TopBarProps) {
   const [searchFocused, setSearchFocused] = React.useState(false);
   const [showNotifications, setShowNotifications] = React.useState(false);
   const [showUserMenu, setShowUserMenu] = React.useState(false);
+  const { isConnected } = useWebSocket();
 
   const notifications = [
     { id: 1, title: "Deploy successful", message: "api-gateway deployed to production", time: "2m ago", type: "success" },
@@ -70,6 +74,21 @@ export function TopBar({ className }: TopBarProps) {
 
       {/* Right section */}
       <div className="flex items-center gap-2">
+        {/* WebSocket Status */}
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-panel border border-panel-border">
+          {isConnected ? (
+            <>
+              <Wifi className="w-4 h-4 text-status-running" />
+              <span className="text-xs text-text-muted hidden sm:inline">Connected</span>
+            </>
+          ) : (
+            <>
+              <WifiOff className="w-4 h-4 text-status-error" />
+              <span className="text-xs text-text-muted hidden sm:inline">Disconnected</span>
+            </>
+          )}
+        </div>
+        
         {/* Notifications */}
         <div className="relative">
           <button

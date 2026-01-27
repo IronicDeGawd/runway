@@ -74,13 +74,17 @@ export function useProjects() {
         if (status === 'errored') uiStatus = 'failed';
         if (status === 'launching') uiStatus = 'building';
 
+        // Get server IP from window location
+        const serverHost = window.location.hostname;
+        const projectPath = `/app/${p.name}`;
+        
         return {
             ...p,
             status: uiStatus,
             memory: process ? Math.round(process.memory / 1024 / 1024) : 0, // Bytes to MB
             cpu: process ? process.cpu : 0,
             uptime: process ? process.uptime : 0,
-            domain: p.domains && p.domains.length > 0 ? p.domains[0] : `${p.name}.pdcp.local`,
+            domain: p.domains && p.domains.length > 0 ? p.domains[0] : `${serverHost}${projectPath}`,
             runtime: p.type,
             createdAt: new Date(p.createdAt), // Convert string to Date
             lastDeployed: new Date(p.createdAt), // Fallback (API doesn't track lastDeployed yet, assuming createdAt for now)

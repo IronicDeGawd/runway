@@ -18,17 +18,38 @@ interface ExtendedWebSocket extends WebSocket {
 }
 
 export const initWebSocket = (server: HttpServer) => {
-  // Log streaming WebSocket (existing)
-  const logsWss = new WebSocketServer({ server, path: '/api/logs' });
+  logger.info('🔌 Initializing WebSocket servers...');
   
-  // Realtime updates WebSocket (new)
-  const realtimeWss = new WebSocketServer({ server, path: '/api/realtime' });
+  // Create WebSocket servers without path restriction (we'll filter in handleUpgrade)
+  const logsWss = new WebSocketServer({ noServer: true });
+  logger.info('✅ Logs WebSocket server created');
+  
+  const realtimeWss = new WebSocketServer({ noServer: true });
+  logger.info('✅ Realtime WebSocket server created');
 
-  // Setup logs WebSocket (existing functionality)
+  // Setup handlers
   setupLogsWebSocket(logsWss);
-  
-  // Setup realtime WebSocket (new functionality)
   setupRealtimeWebSocket(realtimeWss);
+  
+  // Manually handle upgrade events and route to correct WebSocket server
+  server.on('upgrade', (request, socket, head) => {
+    const pathname = new URL(request.url || '', `http://${request.headers.host}`).pathname;
+    logger.info(`⬆️ Upgrade request for path: ${pathname}`);
+    
+    if (pathname === '/api/logs') {
+      logsWss.handleUpgrade(request, socket, head, (ws) => {
+        logsWss.emit('connection', ws, request);
+      });
+    } else if (pathname === '/api/realtime') {
+      realtimeWss.handleUpgrade(request, socket, head, (ws) => {
+        realtimeWss.emit('connection', ws, request);
+      });
+    } else {
+      socket.destroy();
+    }
+  });
+  
+  logger.info('🚀 WebSocket servers ready');
 };
 
 // Logs WebSocket Handler (existing)
@@ -124,6 +145,8 @@ const broadcastLog = (wss: WebSocketServer, type: 'stdout' | 'stderr', packet: a
 // Realtime WebSocket Handler (new)
 function setupRealtimeWebSocket(wss: WebSocketServer) {
   wss.on('connection', (ws: ExtendedWebSocket, req) => {
+    logger.info(`WebSocket connection attempt from ${req.socket.remoteAddress}`);
+    
     ws.isAlive = true;
     ws.channels = new Set();
     ws.on('pong', () => { ws.isAlive = true; });
@@ -133,25 +156,29 @@ function setupRealtimeWebSocket(wss: WebSocketServer) {
     const token = url.searchParams.get('token');
 
     if (!token) {
+      logger.warn('WebSocket connection rejected: No token provided');
       ws.close(1008, 'Token required');
       return;
     }
 
     const config = getAuthConfig();
     if (!config) {
+      logger.error('WebSocket connection rejected: Auth not configured');
       ws.close(1011, 'Auth not configured');
       return;
     }
 
     try {
       jwt.verify(token, config.jwtSecret);
+      logger.info('✅ WebSocket connection authenticated successfully');
     } catch (error) {
+      logger.warn(`WebSocket connection rejected: Invalid token - ${error instanceof Error ? error.message : 'Unknown error'}`);
       ws.close(1008, 'Invalid token');
       return;
     }
 
     // Handle client messages
-    ws.on('message', (message) => {
+    ws.on('message', async (message) => {
       try {
         const data = JSON.parse(message.toString());
         
@@ -163,8 +190,25 @@ function setupRealtimeWebSocket(wss: WebSocketServer) {
         if (data.action === 'unsubscribe' && Array.isArray(data.channels)) {
           data.channels.forEach((channel: string) => ws.channels?.delete(channel));
         }
+
+        // Handle deployment request
+        if (data.action === 'deploy' && data.payload) {
+          const { fileData, name, type } = data.payload;
+          if (!fileData || !name || !type) {
+            ws.send(JSON.stringify({ 
+              type: 'deploy:error', 
+              error: 'Missing required fields: fileData, name, or type' 
+            }));
+            return;
+          }
+
+          // Import deployment service dynamically to avoid circular deps
+          const { handleWebSocketDeployment } = await import('./services/deploymentService');
+          await handleWebSocketDeployment(ws, fileData, name, type);
+        }
       } catch (err) {
-        logger.warn('Invalid WebSocket message received');
+        logger.warn('Invalid WebSocket message received', err);
+        ws.send(JSON.stringify({ type: 'error', error: 'Invalid message format' }));
       }
     });
   });

@@ -59,8 +59,12 @@ app.get('/health', (req, res) => {
 //   res.sendFile(path.join(uiDistPath, 'index.html'));
 // });
 
-// Explicit 404 Handler for all unmatched routes
+// Explicit 404 Handler for all unmatched routes (but skip for WebSocket upgrades)
 app.use((req, res, next) => {
+  // Don't send 404 for WebSocket upgrade requests - they're handled by the WebSocket server
+  if (req.headers.upgrade === 'websocket') {
+    return next(); // Continue to let WebSocket server handle
+  }
   next(new AppError(`Cannot ${req.method} ${req.originalUrl}`, 404));
 });
 

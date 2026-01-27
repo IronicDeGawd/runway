@@ -1,6 +1,6 @@
 import * as React from "react";
 import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { Lock, Shield, ArrowRight } from "lucide-react";
 import { PDCPButton } from "@/components/pdcp/PDCPButton";
 import { PDCPInput, PasswordInput, FormField } from "@/components/pdcp/FormControls";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isLoading, setIsLoading] = React.useState(false);
   const [username, setUsername] = React.useState("admin");
   const [password, setPassword] = React.useState("");
@@ -22,7 +23,10 @@ export default function LoginPage() {
       if (res.data.success) {
         localStorage.setItem('token', res.data.token);
         toast.success('LoggedIn successfully');
-        navigate('/');
+        
+        // Redirect to the page user was trying to access, or home
+        const from = (location.state as any)?.from?.pathname || '/';
+        navigate(from, { replace: true });
       }
     } catch (error) {
       toast.error('Login failed: Invalid credentials');

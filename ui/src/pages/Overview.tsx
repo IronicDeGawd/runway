@@ -153,7 +153,7 @@ export default function OverviewPage() {
                 secondaryStats={[
                   { label: "Uptime", value: Math.floor(metrics.uptime / 3600), suffix: "h" },
                   { label: "Projects", value: runningProjects, suffix: "" },
-                  { label: "Memory", value: `${metrics.usedMemory}/${metrics.totalMemory}`, suffix: "GB" },
+                  { label: "Memory", value: `${(metrics.usedMemory / (1024**3)).toFixed(1)}/${(metrics.totalMemory / (1024**3)).toFixed(1)}`, suffix: "GB" },
                 ]}
               />
             )}

@@ -181,6 +181,8 @@ cd "$INSTALL_DIR"
 # Clean and install dependencies
 rm -rf node_modules dist server/dist ui/dist shared/dist
 npm install --loglevel=error
+# Install shared package as local dependency to resolve @pdcp/shared imports
+npm install ./shared --loglevel=error
 npm run build
 log_success "Project built successfully"
 
@@ -233,40 +235,80 @@ fi
 # Caddy Setup
 log_info "Configuring Caddy reverse proxy..."
 
-# Get UI dist path
-UI_DIST="$INSTALL_DIR/ui/dist"
+# Backup existing Caddyfile if it exists
+if [ -f "/etc/caddy/Caddyfile" ]; then
+    log_warning "Existing Caddyfile found at /etc/caddy/Caddyfile"
+    BACKUP_FILE="/etc/caddy/Caddyfile.backup.$(date +%Y%m%d_%H%M%S)"
+    sudo cp /etc/caddy/Caddyfile "$BACKUP_FILE"
+    log_info "Backed up to: $BACKUP_FILE"
+fi
 
-log_info "Generating Caddyfile..."
-cat > "$INSTALL_DIR/data/Caddyfile" << 'EOF'
-# Control Plane UI
+# Create Caddy config directory structure
+sudo mkdir -p /etc/caddy/sites
+CADDY_DATA_DIR="$INSTALL_DIR/data/caddy"
+mkdir -p "$CADDY_DATA_DIR/sites"
+
+log_info "Generating main Caddyfile with WebSocket support..."
+cat > "$CADDY_DATA_DIR/Caddyfile" << 'EOF'
+{
+  # Global options
+  admin off
+  # Disable auto HTTPS for IP-based access
+  auto_https off
+}
+
+# Import project snippets (defined in sites/*.caddy files)
+import /opt/pdcp/data/caddy/sites/*.caddy
+
+# Control Panel UI
 :80 {
-    # 1. API: High Priority, Explicit Terminal
-    handle /api/* {
-        reverse_proxy 127.0.0.1:3000
+  # All API routes including WebSocket (Caddy handles WebSocket automatically)
+  handle /api/* {
+    reverse_proxy 127.0.0.1:3000 {
+      # Increase timeouts for long-running operations (deployments, builds)
+      transport http {
+        read_timeout 5m
+        write_timeout 5m
+      }
     }
-    
-    handle /socket.io/* {
-        reverse_proxy 127.0.0.1:3000
-    }
-
-    # 2. Frontend: Catch-all Fallback
-    handle {
-        root * /opt/pdcp/ui/dist
-        try_files {path} /index.html
-        file_server
-    }
+  }
+  
+  # Import all project snippets - they contain handle_path blocks
+  # Projects are imported individually by caddyConfigManager.ts
+  # No wildcard imports - snippets are added/removed dynamically
+  
+  # Frontend SPA (must be last - catch-all)
+  handle {
+    root * /opt/pdcp/ui/dist
+    try_files {path} /index.html
+    file_server
+    encode gzip
+  }
 }
 EOF
 
-chmod 644 "$INSTALL_DIR/data/Caddyfile"
-log_success "Caddyfile created"
+chmod 644 "$CADDY_DATA_DIR/Caddyfile"
+log_success "Main Caddyfile created at $CADDY_DATA_DIR/Caddyfile"
 
-# Configure Caddy to use our Caddyfile
-log_info "Setting up Caddy service..."
-sudo mkdir -p /etc/caddy
-cat <<'EOF' | sudo tee /etc/caddy/Caddyfile > /dev/null
-import /opt/pdcp/data/Caddyfile
-EOF
+# Remove old /etc/caddy/Caddyfile and create symlink to our managed config
+log_info "Linking system Caddyfile to our managed configuration..."
+sudo rm -f /etc/caddy/Caddyfile
+sudo ln -s "$CADDY_DATA_DIR/Caddyfile" /etc/caddy/Caddyfile
+log_success "Symlink created: /etc/caddy/Caddyfile -> $CADDY_DATA_DIR/Caddyfile"
+
+# Also symlink sites directory for consistency
+sudo rm -rf /etc/caddy/sites
+sudo ln -s "$CADDY_DATA_DIR/sites" /etc/caddy/sites
+log_success "Symlink created: /etc/caddy/sites -> $CADDY_DATA_DIR/sites"
+
+# Validate Caddy configuration
+log_info "Validating Caddy configuration..."
+if sudo caddy validate --config /etc/caddy/Caddyfile 2>/dev/null; then
+    log_success "Caddy configuration is valid"
+else
+    log_error "Caddy configuration validation failed"
+    log_info "Check the config at: $CADDY_DATA_DIR/Caddyfile"
+fi
 
 # Reload Caddy configuration
 sudo systemctl enable caddy
@@ -280,6 +322,13 @@ else
     log_warning "Caddy failed to start"
     echo -e "  Check logs: ${BLUE}journalctl -u caddy -n 50${NC}"
 fi
+
+# Grant Node.js (via PM2/ubuntu user) permission to restart Caddy without password
+log_info "Configuring sudoers for Caddy management..."
+SUDOERS_FILE="/etc/sudoers.d/pdcp-caddy"
+echo "$USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart caddy, /usr/bin/systemctl reload caddy, /usr/bin/systemctl status caddy" | sudo tee "$SUDOERS_FILE" > /dev/null
+sudo chmod 0440 "$SUDOERS_FILE"
+log_success "Caddy sudoers configured"
 
 # Configure UFW firewall if present
 if command -v ufw &> /dev/null; then
