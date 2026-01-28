@@ -33,6 +33,15 @@ router.get('/:id', requireAuth, async (req, res, next) => {
   }
 });
 
+// Get deployment status
+router.get('/status/:id', requireAuth, (req, res, next) => {
+  const status = deploymentService.getDeploymentStatus(req.params.id);
+  if (!status) {
+    return next(new AppError('Deployment not found', 404));
+  }
+  res.json({ success: true, data: status });
+});
+
 router.post('/deploy', requireAuth, upload.single('file'), async (req, res, next) => {
   if (!req.file) {
     return next(new AppError('No file uploaded', 400));

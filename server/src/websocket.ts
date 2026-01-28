@@ -3,19 +3,21 @@ import { WebSocket, WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import pm2 from 'pm2';
 import os from 'os';
-import { exec } from 'child_process';
-import util from 'util';
+import { statfs } from 'node:fs/promises';
 import { getAuthConfig } from './config/auth';
 import { logger } from './utils/logger';
 import { eventBus, RealtimeEvent, EventPayloadMap } from './events/eventBus';
-
-const execAsync = util.promisify(exec);
 
 interface ExtendedWebSocket extends WebSocket {
   projectId?: string; // For log subscriptions
   channels?: Set<string>; // For realtime subscriptions
   isAlive: boolean;
 }
+
+// Global interval tracking for cleanup
+let metricsInterval: NodeJS.Timeout | null = null;
+let diskUsageCache: { value: number; timestamp: number } | null = null;
+const DISK_CACHE_TTL = 900000; // Cache disk usage for 15 minutes (15 * 60 * 1000)
 
 export const initWebSocket = (server: HttpServer) => {
   logger.info('🔌 Initializing WebSocket servers...');
@@ -142,7 +144,7 @@ const broadcastLog = (wss: WebSocketServer, type: 'stdout' | 'stderr', packet: a
   });
 };
 
-// Realtime WebSocket Handler (new)
+// Realtime WebSocket Handler
 function setupRealtimeWebSocket(wss: WebSocketServer) {
   wss.on('connection', (ws: ExtendedWebSocket, req) => {
     logger.info(`WebSocket connection attempt from ${req.socket.remoteAddress}`);
@@ -185,15 +187,25 @@ function setupRealtimeWebSocket(wss: WebSocketServer) {
         if (data.action === 'subscribe' && Array.isArray(data.channels)) {
           data.channels.forEach((channel: string) => ws.channels?.add(channel));
           logger.debug(`Client subscribed to channels: ${data.channels.join(', ')}`);
+          
+          // Start metrics broadcast if someone subscribes to metrics
+          if (data.channels.includes('metrics')) {
+            ensureMetricsBroadcast(wss);
+          }
         }
         
         if (data.action === 'unsubscribe' && Array.isArray(data.channels)) {
           data.channels.forEach((channel: string) => ws.channels?.delete(channel));
+          
+          // Stop metrics broadcast if no one is subscribed anymore
+          if (data.channels.includes('metrics')) {
+            checkAndStopMetricsBroadcast(wss);
+          }
         }
 
         // Handle deployment request
         if (data.action === 'deploy' && data.payload) {
-          const { fileData, name, type } = data.payload;
+          const { fileData, name, type, deploymentId } = data.payload;
           if (!fileData || !name || !type) {
             ws.send(JSON.stringify({ 
               type: 'deploy:error', 
@@ -204,12 +216,18 @@ function setupRealtimeWebSocket(wss: WebSocketServer) {
 
           // Import deployment service dynamically to avoid circular deps
           const { handleWebSocketDeployment } = await import('./services/deploymentService');
-          await handleWebSocketDeployment(ws, fileData, name, type);
+          await handleWebSocketDeployment(ws, fileData, name, type, deploymentId);
         }
       } catch (err) {
         logger.warn('Invalid WebSocket message received', err);
         ws.send(JSON.stringify({ type: 'error', error: 'Invalid message format' }));
       }
+    });
+
+    // Handle disconnect
+    ws.on('close', () => {
+      // Check if we should stop metrics broadcast
+      checkAndStopMetricsBroadcast(wss);
     });
   });
 
@@ -223,13 +241,13 @@ function setupRealtimeWebSocket(wss: WebSocketServer) {
     });
   }, 30000);
 
-  wss.on('close', () => clearInterval(interval));
+  wss.on('close', () => {
+    clearInterval(interval);
+    stopMetricsBroadcast();
+  });
 
   // Subscribe to event bus and broadcast to clients
   setupEventBroadcasting(wss);
-  
-  // Start periodic metrics broadcast
-  startMetricsBroadcast(wss);
 }
 
 // Event Broadcasting
@@ -283,10 +301,32 @@ function broadcastToChannel<T extends RealtimeEvent>(
   });
 }
 
-// Periodic metrics broadcast
-function startMetricsBroadcast(wss: WebSocketServer) {
-  // Broadcast metrics every 5 seconds
-  setInterval(async () => {
+// Check if any clients are subscribed to metrics
+function hasMetricsSubscribers(wss: WebSocketServer): boolean {
+  for (const client of wss.clients) {
+    const extClient = client as ExtendedWebSocket;
+    if (extClient.channels?.has('metrics')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Start metrics broadcast only if not already running
+function ensureMetricsBroadcast(wss: WebSocketServer) {
+  if (metricsInterval) {
+    logger.debug('Metrics broadcast already running');
+    return;
+  }
+  
+  logger.info('Starting metrics broadcast');
+  metricsInterval = setInterval(async () => {
+    // Only broadcast if someone is subscribed
+    if (!hasMetricsSubscribers(wss)) {
+      logger.debug('No metrics subscribers, skipping broadcast');
+      return;
+    }
+
     try {
       const metrics = await getSystemMetrics();
       eventBus.emitEvent('metrics:update', metrics);
@@ -296,28 +336,36 @@ function startMetricsBroadcast(wss: WebSocketServer) {
   }, 5000);
 }
 
-// Get system metrics (similar to /api/metrics route)
+// Stop metrics broadcast if no subscribers
+function checkAndStopMetricsBroadcast(wss: WebSocketServer) {
+  if (!hasMetricsSubscribers(wss)) {
+    stopMetricsBroadcast();
+  }
+}
+
+// Stop metrics broadcast
+function stopMetricsBroadcast() {
+  if (metricsInterval) {
+    logger.info('Stopping metrics broadcast (no subscribers)');
+    clearInterval(metricsInterval);
+    metricsInterval = null;
+  }
+}
+
+// Get system metrics (optimized version)
 async function getSystemMetrics() {
   const totalMem = os.totalmem();
   const freeMem = os.freemem();
   const usedMem = totalMem - freeMem;
 
-  // CPU calculation (simplified)
-  const cpus = os.cpus();
-  const cpuUsage = cpus.reduce((acc, cpu) => {
-    const total = Object.values(cpu.times).reduce((a, b) => a + b);
-    const idle = cpu.times.idle;
-    return acc + (100 - (100 * idle / total));
-  }, 0) / cpus.length;
+  // CPU calculation using load average (no shell, no blocking)
+  const [load1] = os.loadavg();
+  const cpuCount = os.cpus().length;
+  // Load average represents processes waiting, convert to approximate percentage
+  const cpuUsage = Math.min((load1 / cpuCount) * 100, 100);
 
-  // Disk usage
-  let diskUsage = 0;
-  try {
-    const { stdout } = await execAsync("df -h / | tail -1 | awk '{print $5}' | sed 's/%//'");
-    diskUsage = parseFloat(stdout.trim());
-  } catch (error) {
-    // Fallback
-  }
+  // Disk usage with caching (reduces shell spawns by 12x)
+  const diskUsage = await getCachedDiskUsage();
 
   return {
     cpu: Math.round(cpuUsage * 10) / 10,
@@ -327,4 +375,39 @@ async function getSystemMetrics() {
     totalMemory: totalMem,
     usedMemory: usedMem
   };
+}
+
+// Get disk usage with caching (only check every 15 minutes)
+async function getCachedDiskUsage(): Promise<number> {
+  const now = Date.now();
+  
+  // Return cached value if still fresh (within 15 minutes)
+  if (diskUsageCache && (now - diskUsageCache.timestamp) < DISK_CACHE_TTL) {
+    return diskUsageCache.value;
+  }
+
+  // Fetch fresh disk usage
+  let diskUsage = 0;
+  try {
+    // Use Node.js native statfs instead of shell
+    const stats = await statfs('/');
+    
+    // Calculate percentage used
+    const totalBlocks = stats.blocks;
+    const freeBlocks = stats.bfree;
+    const usedBlocks = totalBlocks - freeBlocks;
+    diskUsage = Math.round((usedBlocks / totalBlocks) * 100 * 10) / 10;
+    
+    // Update cache
+    diskUsageCache = {
+      value: diskUsage,
+      timestamp: now
+    };
+  } catch (error) {
+    logger.warn('Failed to get disk usage, using cached or default value', error);
+    // Return cached value if available, otherwise 0
+    diskUsage = diskUsageCache?.value || 0;
+  }
+
+  return diskUsage;
 }

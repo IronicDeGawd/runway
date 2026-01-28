@@ -60,8 +60,8 @@ router.get('/', requireAuth, async (req, res, next) => {
         memory: Math.round((usedMem / totalMem) * 100 * 10) / 10,
         disk: diskUsage,
         uptime: Math.round(os.uptime()),
-        totalMemory: Math.round(totalMem / 1024 / 1024 / 1024 * 10) / 10, // GB
-        usedMemory: Math.round(usedMem / 1024 / 1024 / 1024 * 10) / 10, // GB
+        totalMemory: totalMem, // Bytes
+        usedMemory: usedMem, // Bytes
       }
     });
   } catch (error) {

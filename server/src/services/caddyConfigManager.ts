@@ -75,7 +75,7 @@ export class CaddyConfigManager {
         : '';
 
       const mainConfig = `{
-  admin off
+  admin localhost:2019
   auto_https off
 }
 
@@ -251,15 +251,16 @@ ${domain} {
         throw new Error('Caddy config validation failed');
       }
 
-      // Use systemctl since admin API is disabled
-      const { stdout, stderr } = await execAsync('sudo systemctl restart caddy');
+      // Use caddy reload API via CLI (requires admin endpoint)
+      // --force is used to override existing config if needed
+      const { stdout, stderr } = await execAsync(`sudo caddy reload --config ${CADDYFILE_PATH} --force`);
       
       if (stderr) {
-        logger.warn('Caddy restart stderr:', stderr);
+        logger.warn('Caddy reload stderr:', stderr);
       }
       
       if (stdout) {
-        logger.info('Caddy restart stdout:', stdout);
+        logger.info('Caddy reload stdout:', stdout);
       }
       
       logger.info('Caddy configuration reloaded successfully');

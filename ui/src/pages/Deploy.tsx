@@ -5,6 +5,7 @@ import { Upload, Check, ArrowRight, ArrowLeft, RefreshCw, XCircle } from 'lucide
 import { useDeployFlow } from '@/hooks/useDeployFlow';
 import { RiReactjsFill, RiNextjsFill } from "react-icons/ri";
 import { FaNodeJs } from "react-icons/fa";
+import { getProjectUrl } from '@/utils/url';
 
 const steps = [
   { id: 'upload', label: 'Upload' },
@@ -306,19 +307,26 @@ export default function DeployPage() {
               <div>
                 <h2 className="text-2xl font-semibold text-foreground">Deployment Complete!</h2>
                 <p className="text-zinc-500 mt-2">Your project is now live</p>
+                <div className="flex flex-col items-center gap-6">
+                  <div className="p-4 rounded-element bg-zinc-800 border border-zinc-700 w-full max-w-md">
+                    <span className="text-sm text-zinc-500">Your project is available at</span>
+                    <a
+                      href={getProjectUrl(state.deployedProject || { name: projectName })}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-neon mt-1 block hover:underline break-all"
+                    >
+                      {getProjectUrl(state.deployedProject || { name: projectName })}
+                    </a>
+                  </div>
+                  <button
+                    onClick={() => navigate('/projects')}
+                    className="bg-neon text-primary-foreground font-semibold px-8 py-3 rounded-pill hover:bg-neon-hover transition-colors shadow-neon-glow"
+                  >
+                    View All Projects
+                  </button>
+                </div>
               </div>
-              <div className="p-4 rounded-element bg-zinc-800 border border-zinc-700 inline-block">
-                <span className="text-sm text-zinc-500">Your project is available at</span>
-                <p className="font-medium text-foreground mt-1">
-                  https://{projectName || 'my-project'}.example.com
-                </p>
-              </div>
-              <button
-                onClick={() => navigate('/projects')}
-                className="bg-neon text-primary-foreground font-semibold px-8 py-3 rounded-pill hover:bg-neon-hover transition-colors shadow-neon-glow"
-              >
-                View All Projects
-              </button>
             </div>
           )}
         </div>
@@ -349,7 +357,7 @@ export default function DeployPage() {
           </div>
         )}
       </div>
-    </DashboardLayout>
+    </DashboardLayout >
   );
 }
 

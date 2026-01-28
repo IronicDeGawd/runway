@@ -9,6 +9,7 @@ export interface DeployState {
   progress: number;
   logs: string[];
   error?: string;
+  deployedProject?: any;
 }
 
 // Helper to convert File to base64
@@ -67,6 +68,11 @@ export function useDeployFlow() {
       // Convert file to base64
       const fileData = await fileToBase64(finalConfig.file);
       
+      // Generate unique deployment ID (fallback for non-secure contexts)
+      const deploymentId =
+        globalThis.crypto?.randomUUID?.() ??
+        `${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
+
       // Connect to WebSocket
       const token = localStorage.getItem('token');
       if (!token) {
@@ -85,7 +91,8 @@ export function useDeployFlow() {
           payload: {
             fileData,
             name: finalConfig.name,
-            type: finalConfig.runtime
+            type: finalConfig.runtime,
+            deploymentId
           }
         }));
       };
@@ -107,7 +114,8 @@ export function useDeployFlow() {
               ...prev,
               step: 'complete',
               progress: 100,
-              logs: [...prev.logs, 'Deployment successful!', 'Project is online.']
+              logs: [...prev.logs, 'Deployment successful!', 'Project is online.'],
+              deployedProject: message.project
             }));
             setIsDeploying(false); // Stop deploying state
             toast.success('Deployment successful!');
@@ -144,8 +152,65 @@ export function useDeployFlow() {
       };
 
       ws.onclose = () => {
+        console.log('WebSocket closed. Was deploying?', isDeploying);
+        // If we were deploying and didn't get a success/error, poll for status
+        if (state.step !== 'complete' && !state.error) {
+           console.log('Unexpected disconnect, polling status...');
+           const pollInterval = setInterval(async () => {
+             try {
+               const response = await fetch(`/api/project/status/${deploymentId}`, {
+                 headers: { 'Authorization': `Bearer ${token}` }
+               });
+               
+               if (response.ok) {
+                 const json = await response.json();
+                 const status = json.data;
+                 
+                 if (status) {
+                    if (status.status === 'success') {
+                      clearInterval(pollInterval);
+                      setState(prev => ({
+                        ...prev,
+                        step: 'complete',
+                        progress: 100,
+                        logs: [...prev.logs, ...status.logs, 'Deployment successful!', 'Project is online.'],
+                        deployedProject: status.project
+                      }));
+                      setIsDeploying(false);
+                      toast.success('Deployment successful!');
+                    } else if (status.status === 'failed') {
+                      clearInterval(pollInterval);
+                       setState(prev => ({
+                        ...prev,
+                        error: status.error || 'Deployment failed',
+                        logs: [...prev.logs, ...status.logs, `Error: ${status.error}`]
+                      }));
+                      setIsDeploying(false);
+                      toast.error(status.error || 'Deployment failed');
+                    } else {
+                       // Update logs/progress
+                       setState(prev => ({
+                        ...prev,
+                        progress: status.progress || prev.progress,
+                        logs: [...new Set([...prev.logs, ...status.logs])] // Simple de-dupe
+                      }));
+                    }
+                 }
+               } else if (response.status === 404) {
+                 // Deployment not found - maybe didn't start?
+                 // Retry a few times then fail? For now, keep polling for 30s?
+               }
+             } catch (e) {
+               console.error('Polling error', e);
+             }
+           }, 2000);
+
+           // Stop polling after 60s
+           setTimeout(() => clearInterval(pollInterval), 60000);
+        }
+        
         wsRef.current = null;
-        setIsDeploying(false);
+        // Don't set isDeploying(false) here immediately if we are polling
       };
 
     } catch (error: any) {

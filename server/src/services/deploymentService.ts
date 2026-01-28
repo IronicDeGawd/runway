@@ -15,6 +15,7 @@ import { activityLogger } from './activityLogger';
 import { eventBus } from '../events/eventBus';
 import { caddyConfigManager } from './caddyConfigManager';
 import { BuildDetector } from './buildDetector';
+import { patcherService } from './patcher/patcherService';
 
 const execAsync = util.promisify(exec);
 
@@ -28,88 +29,10 @@ fs.ensureDirSync(TEMP_DIR);
 export class DeploymentService {
 
   /**
-   * Configure base path for React/Next.js projects to work in subdirectories
+   * Detect package manager used in project
    */
-  private async configureBasePath(dir: string, projectName: string, type: ProjectType): Promise<void> {
-    const basePath = `/app/${projectName}`;
-    
-    if (type === 'react') {
-      // Vite/React: modify vite.config.ts or vite.config.js
-      const viteConfigs = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs'];
-      
-      for (const configFile of viteConfigs) {
-        const configPath = path.join(dir, configFile);
-        if (await fs.pathExists(configPath)) {
-          logger.info(`Configuring base path in ${configFile}`);
-          let content = await fs.readFile(configPath, 'utf-8');
-          
-          // Check if base is already configured
-          if (content.includes('base:')) {
-            // Replace existing base configuration
-            content = content.replace(/base:\s*['"\`][^'"\`]*['"\`]/g, `base: '${basePath}'`);
-          } else {
-            // Add base to defineConfig
-            content = content.replace(
-              /(defineConfig\s*\(\s*{)/,
-              `$1\n  base: '${basePath}',`
-            );
-          }
-          
-          await fs.writeFile(configPath, content, 'utf-8');
-          logger.info(`✅ Base path set to ${basePath} in ${configFile}`);
-          
-          // Also update index.html to add base tag for public assets
-          const indexPath = path.join(dir, 'index.html');
-          if (await fs.pathExists(indexPath)) {
-            let html = await fs.readFile(indexPath, 'utf-8');
-            // Inject base tag after <head> if not already present
-            if (!html.includes('<base')) {
-              html = html.replace(/<head>/i, `<head>\n  <base href="${basePath}/">`);
-              await fs.writeFile(indexPath, html, 'utf-8');
-              logger.info(`✅ Added <base> tag to index.html`);
-            }
-          }
-          
-          return;
-        }
-      }
-      
-      logger.warn('No vite.config found, assets may not load correctly in subdirectory');
-      
-    } else if (type === 'next') {
-      // Next.js: modify next.config.js/mjs
-      const nextConfigs = ['next.config.js', 'next.config.mjs'];
-      
-      for (const configFile of nextConfigs) {
-        const configPath = path.join(dir, configFile);
-        if (await fs.pathExists(configPath)) {
-          logger.info(`Configuring base path in ${configFile}`);
-          let content = await fs.readFile(configPath, 'utf-8');
-          
-          // Add basePath and assetPrefix to Next.js config
-          if (content.includes('module.exports')) {
-            // CommonJS format
-            content = content.replace(
-              /(module\.exports\s*=\s*{)/,
-              `$1\n  basePath: '${basePath}',\n  assetPrefix: '${basePath}',`
-            );
-          } else if (content.includes('export default')) {
-            // ES module format
-            content = content.replace(
-              /(export\s+default\s+{)/,
-              `$1\n  basePath: '${basePath}',\n  assetPrefix: '${basePath}',`
-            );
-          }
-          
-          await fs.writeFile(configPath, content, 'utf-8');
-          logger.info(`✅ Base path and asset prefix set to ${basePath} in ${configFile}`);
-          return;
-        }
-      }
-      
-      logger.warn('No next.config found, assets may not load correctly in subdirectory');
-    }
-  }
+  
+
   
   private async detectPackageManager(dir: string): Promise<PackageManager> {
     if (await fs.pathExists(path.join(dir, 'pnpm-lock.yaml'))) return 'pnpm';
@@ -148,7 +71,7 @@ export class DeploymentService {
     }
   }
 
-  private async buildProject(dir: string, manager: PackageManager, projectId: string): Promise<void> {
+  private async buildProject(dir: string, manager: PackageManager, projectId: string, projectName: string, type: ProjectType): Promise<void> {
     try {
       const pkgJsonPath = path.join(dir, 'package.json');
       const pkgJson = await fs.readJson(pkgJsonPath);
@@ -157,7 +80,24 @@ export class DeploymentService {
         logger.info(`Building project in ${dir}`);
         const envVars = await envService.getEnv(projectId);
         
-        const buildCmd = `${manager} run build`;
+        let buildCmd = `${manager} run build`;
+        
+        // Use CLI argument for base path in React/Vite projects
+        // This is more robust than patching vite.config.ts
+        if (type === 'react') {
+           // Ensure safe project name for URL
+           const safeName = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+           const basePath = `/app/${safeName}`;
+           
+           if (manager === 'npm') {
+             // npm requires -- to pass args to the script
+             buildCmd += ` -- --base=${basePath}`;
+           } else {
+             // yarn/pnpm usually append args directly, but explicit --base works for Vite
+             buildCmd += ` --base=${basePath}`;
+           }
+           logger.info(`Using base path override: ${basePath}`);
+        }
         
         try {
           const { stdout, stderr } = await execAsync(buildCmd, { 
@@ -199,16 +139,31 @@ export class DeploymentService {
     }
   }
 
-  async deployProject(filePath: string, projectName: string, type: ProjectType): Promise<ProjectConfig> {
-    const deployId = uuidv4();
+  async deployProject(
+    filePath: string, 
+    projectName: string, 
+    type: ProjectType,
+    options: { 
+      onProgress?: (step: string, message: string, percentage: number) => void,
+      deploymentId?: string 
+    } = {}
+  ): Promise<ProjectConfig> {
+    const deployId = options.deploymentId || uuidv4();
     const stagingDir = path.join(TEMP_DIR, deployId);
     let portAllocated = false;
     let newPort: number | null = null;
     
-    logger.info(`Starting deployment ${deployId} for ${projectName}`);
+    // Helper for progress updates
+    const reportProgress = (step: string, msg: string, pct: number) => {
+      if (options.onProgress) options.onProgress(step, msg, pct);
+      logger.info(`[Deploy:${projectName}] ${msg} (${pct}%)`);
+    };
+
+    reportProgress('init', `Starting deployment ${deployId}`, 0);
 
     try {
       // 1. Extract zip
+      reportProgress('upload', 'Extracting package...', 10);
       await extractZip(filePath, stagingDir);
       logger.info('✅ Zip extracted');
       
@@ -223,19 +178,25 @@ export class DeploymentService {
       logger.info(`Detected package manager: ${pkgManager}`);
 
       // 4. Install dependencies
+      reportProgress('install', 'Installing dependencies...', 25);
       await this.installDependencies(stagingDir, pkgManager);
       logger.info('✅ Dependencies installed');
 
-      // 5. Configure base path for subdirectory routing
-      if (type === 'react' || type === 'next') {
-        await this.configureBasePath(stagingDir, projectName, type);
-      }
+      // 5. Apply project-specific patches (Router, Configs, etc.)
+      reportProgress('patch', 'Applying patches...', 40);
+      await patcherService.patchProject(stagingDir, type, {
+        projectId: deployId, // Use the deployment ID for logging context
+        projectName,
+        deploymentId: deployId
+      });
 
       // 6. Build the project (if required)
       if (type === 'react' || type === 'next') {
+        reportProgress('build', 'Building project...', 50);
         let existingProject = (await projectRegistry.getAll()).find(p => p.name === projectName);
         let pid = existingProject ? existingProject.id : 'new-project-placeholder';
-        await this.buildProject(stagingDir, pkgManager, pid);
+        await this.buildProject(stagingDir, pkgManager, pid, projectName, type);
+        reportProgress('build', 'Build complete', 70);
       }
 
       // 6. ✅ CRITICAL FIX: Verify build output BEFORE proceeding
@@ -300,6 +261,7 @@ export class DeploymentService {
       }
 
       // 12. ✅ CRITICAL FIX: Update Caddy with modular config
+      reportProgress('deploy', 'Configuring reverse proxy...', 90);
       await caddyConfigManager.updateProjectConfig(newConfig);
       logger.info('✅ Caddy config updated');
 
@@ -364,6 +326,44 @@ export class DeploymentService {
     }
   }
 
+  // Track active deployments for polling fallback
+  private activeDeployments = new Map<string, { 
+    status: 'deploying' | 'success' | 'failed', 
+    progress: number, 
+    logs: string[], 
+    error?: string,
+    project?: ProjectConfig 
+  }>();
+
+  updateDeploymentStatus(id: string, update: Partial<{ status: 'deploying' | 'success' | 'failed', progress: number, logs: string[], error?: string, project: ProjectConfig }>) {
+    const current = this.activeDeployments.get(id) || { status: 'deploying', progress: 0, logs: [], error: undefined };
+    
+    // Append logs if provided, don't overwrite array
+    let newLogs = current.logs;
+    if (update.logs) {
+      newLogs = [...current.logs, ...update.logs];
+    } else if (update.status === 'success') {
+       newLogs = [...current.logs, 'Deployment successful!', 'Project is online.'];
+    }
+
+    this.activeDeployments.set(id, {
+      ...current,
+      ...update,
+      logs: newLogs
+    });
+
+    // Clean up successful/failed deployments after 5 minutes
+    if (update.status === 'success' || update.status === 'failed') {
+      setTimeout(() => {
+        this.activeDeployments.delete(id);
+      }, 5 * 60 * 1000);
+    }
+  }
+
+  getDeploymentStatus(id: string) {
+    return this.activeDeployments.get(id);
+  }
+
   /**
    * Wait for PM2 process to start and respond
    */
@@ -403,73 +403,96 @@ export async function handleWebSocketDeployment(
   ws: any,
   fileData: string, // base64 encoded zip file
   projectName: string,
-  type: ProjectType
+  type: ProjectType,
+  deploymentId?: string
 ): Promise<void> {
+  const effectiveDeploymentId = deploymentId || uuidv4();
+  
+  // Initialize status
+  deploymentService.updateDeploymentStatus(effectiveDeploymentId, { 
+    status: 'deploying', 
+    progress: 0, 
+    logs: ['Initializing deployment...'] 
+  });
+
   const sendProgress = (step: string, message: string, progress: number) => {
-    ws.send(JSON.stringify({ 
-      type: 'deploy:progress', 
-      step, 
-      message, 
-      progress 
-    }));
+    // Send to WS
+    try {
+      if (ws.readyState === 1) { // OPEN
+        ws.send(JSON.stringify({ 
+          type: 'deploy:progress', 
+          step, 
+          message, 
+          progress 
+        }));
+      }
+    } catch (e) { /* ignore ws errors */ }
+    
     logger.info(`[WS Deploy] ${message} (${progress}%)`);
+    
+    // Update store
+    deploymentService.updateDeploymentStatus(effectiveDeploymentId, {
+      status: 'deploying',
+      progress,
+      logs: [message]
+    });
   };
 
   const sendError = (error: string) => {
-    ws.send(JSON.stringify({ type: 'deploy:error', error }));
+    try {
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'deploy:error', error }));
+      }
+    } catch (e) { /* ignore */ }
+    
     logger.error(`[WS Deploy] Error: ${error}`);
+    
+    deploymentService.updateDeploymentStatus(effectiveDeploymentId, {
+      status: 'failed',
+      error: error
+    });
   };
 
   const sendSuccess = (project: ProjectConfig) => {
-    ws.send(JSON.stringify({ type: 'deploy:success', project }));
+    try {
+      if (ws.readyState === 1) {
+        ws.send(JSON.stringify({ type: 'deploy:success', project }));
+      }
+    } catch (e) { /* ignore */ }
+    
     logger.info(`[WS Deploy] Success: ${project.name}`);
+    
+    deploymentService.updateDeploymentStatus(effectiveDeploymentId, {
+      status: 'success',
+      progress: 100,
+      project
+    });
   };
 
   try {
     // Decode base64 file data and save to temp file
     sendProgress('upload', 'Preparing deployment package...', 5);
-    const deployId = uuidv4();
-    const tempFilePath = path.join(TEMP_DIR, `${deployId}.zip`);
+    const tempDeployId = uuidv4(); // Internal ID for filesystem ops
+    const tempFilePath = path.join(TEMP_DIR, `${tempDeployId}.zip`);
     const buffer = Buffer.from(fileData, 'base64');
     await fs.writeFile(tempFilePath, buffer);
     
-    sendProgress('upload', 'Package received, extracting...', 15);
-    const stagingDir = path.join(TEMP_DIR, deployId);
-    await extractZip(tempFilePath, stagingDir);
-    sendProgress('install', 'Validating project structure...', 20);
+    // Unified Deployment Flow
+    // We delegate EVERYTHING to deployProject to avoid double-builds and ensure patching
+    const project = await deploymentService.deployProject(tempFilePath, projectName, type, {
+      deploymentId: effectiveDeploymentId,
+      onProgress: (step: string, message: string, progress: number) => {
+        sendProgress(step, message, progress);
+      }
+    });
     
-    // Validate package.json
-    const pkgJsonPath = path.join(stagingDir, 'package.json');
-    if (!await fs.pathExists(pkgJsonPath)) {
-      throw new AppError('Invalid project: package.json missing', 400);
-    }
-    
-    sendProgress('install', 'Installing dependencies...', 25);
-    const pkgManager = await deploymentService['detectPackageManager'](stagingDir);
-    await deploymentService['installDependencies'](stagingDir, pkgManager);
-    
-    sendProgress('build', 'Dependencies installed, starting build...', 50);
-    
-    // Build if needed
-    if (type === 'react' || type === 'next') {
-      let existingProject = (await projectRegistry.getAll()).find(p => p.name === projectName);
-      let pid = existingProject ? existingProject.id : 'new-project-placeholder';
-      await deploymentService['buildProject'](stagingDir, pkgManager, pid);
-      sendProgress('build', 'Build completed successfully', 70);
-    }
-    
-    sendProgress('deploy', 'Deploying application...', 75);
-    
-    // Continue with rest of deployment
-    const project = await deploymentService.deployProject(tempFilePath, projectName, type);
-    
-    sendProgress('deploy', 'Configuring reverse proxy...', 95);
     sendProgress('complete', 'Deployment successful!', 100);
     sendSuccess(project);
     
     // Cleanup temp file
-    await fs.remove(tempFilePath);
-    await fs.remove(stagingDir);
+    if (await fs.pathExists(tempFilePath)) {
+      await fs.remove(tempFilePath);
+    }
     
   } catch (error: any) {
     logger.error('WebSocket deployment failed', error);

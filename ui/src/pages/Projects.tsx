@@ -14,6 +14,7 @@ import {
   Filter,
   FilePlus,
 } from "lucide-react";
+import { getProjectUrl } from '@/utils/url';
 
 export default function ProjectsPage() {
   const navigate = useNavigate();
@@ -215,12 +216,12 @@ export default function ProjectsPage() {
                     <div className="text-right">
                       <p className="text-zinc-500 text-sm mb-1">Domain</p>
                       <a
-                        href={`http://${selectedProject.domain}`}
+                        href={getProjectUrl(selectedProject)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm font-medium hover:text-neon transition-colors flex items-center gap-1 justify-end"
                       >
-                        {selectedProject.domain}
+                        {getProjectUrl(selectedProject).replace(/^https?:\/\//, '')}
                         <ExternalLink className="w-3 h-3" />
                       </a>
                     </div>

@@ -83,25 +83,52 @@ mkdir -p "$INSTALL_DIR/temp_uploads"
 chown -R "$REAL_USER:$REAL_USER" "$INSTALL_DIR"
 
 # ============================================================================
+# Configure Swap (Prevent OOM)
+# ============================================================================
+log_info "Checking swap configuration..."
+if [ $(swapon --show | wc -l) -le 1 ] && [ ! -f /swapfile ]; then
+    log_info "Creating 2GB swap file for build stability..."
+    fallocate -l 2G /swapfile
+    chmod 600 /swapfile
+    mkswap /swapfile
+    swapon /swapfile
+    echo '/swapfile none swap sw 0 0' | tee -a /etc/fstab
+    log_success "Swap created and enabled"
+else
+    log_success "Swap already configured"
+fi
+
+# ============================================================================
 # Dependency Checks
 # ============================================================================
 log_info "Checking dependencies..."
 
-if ! command -v node &> /dev/null; then
-    log_info "Node.js not found. Installing Node 20.x..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt-get install -y nodejs
-    log_success "Node.js installed: $(node --version)"
+if ! su - "$REAL_USER" -c "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && command -v node" &> /dev/null; then
+    log_info "Node.js not found. Installing via NVM for $REAL_USER..."
+    
+    # Install NVM as the real user
+    su - "$REAL_USER" -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash"
+    
+    # Source NVM and install Node LTS
+    su - "$REAL_USER" -c "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && nvm install --lts && nvm use --lts"
+    
+    # Verify installation
+    NODE_VERSION=$(su - "$REAL_USER" -c "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && node --version")
+    log_success "Node.js installed: $NODE_VERSION"
+    
+    # Prioritize installing PM2 immediately within NVM context
+    log_info "Installing PM2 in NVM environment..."
+    su - "$REAL_USER" -c "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && npm install -g pm2"
 else
-    log_success "Node.js already installed: $(node --version)"
+    NODE_VERSION=$(su - "$REAL_USER" -c "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && node --version || node --version")
+    log_success "Node.js already installed: $NODE_VERSION"
 fi
 
-if ! command -v pm2 &> /dev/null; then
-    log_info "Installing PM2..."
-    npm install -g pm2
-    log_success "PM2 installed: $(pm2 --version)"
-else
-    log_success "PM2 already installed: $(pm2 --version)"
+# PM2 check is now handled within the Node/NVM block or subsequent npm install.
+# We verification step here just to be sure.
+if ! su - "$REAL_USER" -c "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && command -v pm2" &> /dev/null; then
+     log_info "PM2 not found. Installing via NVM..."
+     su - "$REAL_USER" -c "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && npm install -g pm2"
 fi
 
 if ! command -v caddy &> /dev/null; then
@@ -158,11 +185,17 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
         log_success "Docker installed: $(docker --version)"
         
-        # Add user to docker group
+        log_success "Docker installed: $(docker --version)"
+    else
+        log_success "Docker is already installed: $(docker --version)"
+    fi
+    
+    # ALWAYS ensure user is in docker group, regardless of whether we just installed it or it was already there
+    if ! groups "$REAL_USER" | grep -q "\bdocker\b"; then
         usermod -aG docker "$REAL_USER"
         log_info "Added $REAL_USER to docker group (log out and back in for this to take effect)"
     else
-        log_success "Docker is already installed: $(docker --version)"
+        log_info "$REAL_USER is already in the docker group"
     fi
     
     systemctl enable docker
@@ -178,32 +211,40 @@ else
 fi
 
 # ============================================================================
-# Copy Files
+# Copy Pre-Built Artifacts
 # ============================================================================
-log_info "Copying application files to ${INSTALL_DIR}..."
+# We assume the incoming directory structure is ALREADY the production artifact structure.
+# So we simply sync everything from current dir to install dir.
+log_info "Syncing production artifacts to ${INSTALL_DIR}..."
+
 rsync -a \
+    --delete \
+    --exclude 'data' \
     --exclude 'node_modules' \
-    --exclude '.git' \
-    --exclude 'dist' \
-    --exclude '.DS_Store' \
-    --exclude 'server/dist' \
-    --exclude 'ui/dist' \
-    --exclude 'shared/dist' \
+    --exclude 'apps' \
+    --exclude 'temp_uploads' \
+    --exclude 'logs' \
     . "$INSTALL_DIR/"
+
 chown -R "$REAL_USER:$REAL_USER" "$INSTALL_DIR"
-log_success "Files copied successfully"
+log_success "Artifacts deployed successfully"
 
 # ============================================================================
-# Build (as real user)
+# Install Production Dependencies (as real user)
 # ============================================================================
-log_info "Building project..."
+log_info "Installing production dependencies..."
 cd "$INSTALL_DIR"
-rm -rf node_modules dist server/dist ui/dist shared/dist
 
-# Run npm commands as the real user
-su - "$REAL_USER" -c "cd '$INSTALL_DIR' && npm install --loglevel=error"
-su - "$REAL_USER" -c "cd '$INSTALL_DIR' && npm install ./shared --loglevel=error"
-su - "$REAL_USER" -c "cd '$INSTALL_DIR' && npm run build"
+# NVM Environment Command Wrapper
+NVM_EXEC="export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\""
+
+# Install root dependencies (concurrently, shared, etc)
+# Using --omit=dev for production only
+su - "$REAL_USER" -c "$NVM_EXEC && cd '$INSTALL_DIR' && npm install --omit=dev --loglevel=error"
+su - "$REAL_USER" -c "$NVM_EXEC && cd '$INSTALL_DIR' && npm install ./shared --omit=dev --loglevel=error"
+
+# Note: We do NOT run 'npm run build' anymore.
+
 
 log_success "Project built successfully"
 
@@ -213,14 +254,14 @@ log_success "Project built successfully"
 log_info "Setting up admin credentials..."
 if [ ! -f "$INSTALL_DIR/data/auth.json" ]; then
     log_info "Running interactive auth setup..."
-    su - "$REAL_USER" -c "cd '$INSTALL_DIR' && node server/scripts/setup-auth.js"
+    su - "$REAL_USER" -c "$NVM_EXEC && cd '$INSTALL_DIR' && node server/scripts/setup-auth.js"
     log_success "Admin credentials configured"
 else
     log_info "Auth file already exists."
     read -p "Do you want to change the admin password? (y/n) " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        su - "$REAL_USER" -c "cd '$INSTALL_DIR' && node server/scripts/setup-auth.js"
+        su - "$REAL_USER" -c "$NVM_EXEC && cd '$INSTALL_DIR' && node server/scripts/setup-auth.js"
         log_success "Admin credentials updated"
     else
         log_info "Keeping existing credentials"
@@ -233,12 +274,12 @@ fi
 log_info "Starting Control Plane with PM2..."
 cd "$INSTALL_DIR"
 
-# Stop existing PM2 process if any
-su - "$REAL_USER" -c "pm2 delete pdcp-server 2>/dev/null || true"
+# Stop existing PM2 process and KILL the daemon to ensure we drop legacy/root paths
+su - "$REAL_USER" -c "$NVM_EXEC && pm2 kill && sleep 5"
 
 # Start with PM2 as real user
-su - "$REAL_USER" -c "cd '$INSTALL_DIR' && pm2 start ecosystem.config.js"
-su - "$REAL_USER" -c "pm2 save"
+su - "$REAL_USER" -c "$NVM_EXEC && cd '$INSTALL_DIR' && pm2 start ecosystem.config.js"
+su - "$REAL_USER" -c "$NVM_EXEC && pm2 save"
 
 log_success "PM2 process started"
 
@@ -248,7 +289,9 @@ log_success "PM2 process started"
 log_info "Configuring PM2 to start on boot..."
 
 # Generate and execute PM2 startup script non-interactively
-PM2_STARTUP_SCRIPT=$(su - "$REAL_USER" -c "pm2 startup systemd -u $REAL_USER --hp $REAL_HOME" | grep "^sudo env" || echo "")
+# Generate and execute PM2 startup script non-interactively
+# We need to ensure we use the PM2 from NVM
+PM2_STARTUP_SCRIPT=$(su - "$REAL_USER" -c "$NVM_EXEC && pm2 startup systemd -u $REAL_USER --hp $REAL_HOME" | grep "^sudo env" || echo "")
 
 if [ -n "$PM2_STARTUP_SCRIPT" ]; then
     # Remove 'sudo' from the command since we're already root
@@ -261,7 +304,7 @@ if [ -n "$PM2_STARTUP_SCRIPT" ]; then
     }
     
     # Save PM2 process list as the real user
-    su - "$REAL_USER" -c "pm2 save"
+    su - "$REAL_USER" -c "$NVM_EXEC && pm2 save"
     
     sleep 1
     
@@ -298,7 +341,7 @@ chown -R "$REAL_USER:$REAL_USER" "$CADDY_DATA_DIR"
 log_info "Generating main Caddyfile with WebSocket support..."
 cat > "$CADDY_DATA_DIR/Caddyfile" << 'EOF'
 {
-  admin off
+  admin localhost:2019
   auto_https off
 }
 
@@ -397,7 +440,32 @@ chmod 0440 "$SUDOERS_FILE"
 log_success "Caddy sudoers configured"
 
 # ============================================================================
-# Configure UFW firewall if present
+# Final Status
+# ============================================================================
+echo ""
+echo -e "${GREEN}==================================${NC}"
+echo -e "${GREEN}Installation Complete!${NC}"
+echo -e "${GREEN}==================================${NC}"
+echo ""
+echo -e "Dashboard: ${BLUE}http://$(hostname -I | awk '{print $1}')/${NC}"
+echo ""
+echo -e "Services Status:"
+su - "$REAL_USER" -c "$NVM_EXEC && pm2 ping" &> /dev/null && echo -e "  PM2: ${GREEN}✓ Running${NC}" || echo -e "  PM2: ${YELLOW}⚠ Not running${NC}"
+systemctl is-active --quiet caddy && echo -e "  Caddy: ${GREEN}✓ Running${NC}" || echo -e "  Caddy: ${YELLOW}⚠ Not running${NC}"
+echo ""
+echo -e "Useful Commands:"
+echo -e "  View logs: ${BLUE}pm2 logs${NC}"
+echo -e "  Check status: ${BLUE}pm2 status${NC}"
+echo -e "  Restart server: ${BLUE}pm2 restart pdcp-server${NC}"
+echo -e "  Caddy logs: ${BLUE}journalctl -u caddy -f${NC}"
+echo ""
+echo -e "${YELLOW}Important:${NC}"
+echo -e "  - Log out and back in for Docker group membership to take effect"
+echo -e "  - Admin credentials are stored in: ${BLUE}$INSTALL_DIR/data/auth.json${NC}"
+echo ""
+
+# ============================================================================
+# Configure UFW firewall (Last step as it may reset connection)
 # ============================================================================
 if command -v ufw &> /dev/null; then
     log_info "Configuring firewall (UFW)..."
@@ -415,33 +483,7 @@ if command -v ufw &> /dev/null; then
     # Optionally allow HTTPS for future
     ufw allow 443/tcp > /dev/null 2>&1
     
-    log_success "Firewall configured (ports 22, 80, 443 open)"
+    log_success "Firewall configured"
 else
     log_info "UFW not installed, skipping firewall configuration"
-    log_warning "Ensure your cloud provider security group allows port 80"
 fi
-
-# ============================================================================
-# Final Status
-# ============================================================================
-echo ""
-echo -e "${GREEN}==================================${NC}"
-echo -e "${GREEN}Installation Complete!${NC}"
-echo -e "${GREEN}==================================${NC}"
-echo ""
-echo -e "Dashboard: ${BLUE}http://$(hostname -I | awk '{print $1}')/${NC}"
-echo ""
-echo -e "Services Status:"
-systemctl is-active --quiet "pm2-$REAL_USER" && echo -e "  PM2: ${GREEN}✓ Running${NC}" || echo -e "  PM2: ${YELLOW}⚠ Not running${NC}"
-systemctl is-active --quiet caddy && echo -e "  Caddy: ${GREEN}✓ Running${NC}" || echo -e "  Caddy: ${YELLOW}⚠ Not running${NC}"
-echo ""
-echo -e "Useful Commands:"
-echo -e "  View logs: ${BLUE}pm2 logs${NC}"
-echo -e "  Check status: ${BLUE}pm2 status${NC}"
-echo -e "  Restart server: ${BLUE}pm2 restart pdcp-server${NC}"
-echo -e "  Caddy logs: ${BLUE}journalctl -u caddy -f${NC}"
-echo ""
-echo -e "${YELLOW}Important:${NC}"
-echo -e "  - Log out and back in for Docker group membership to take effect"
-echo -e "  - Admin credentials are stored in: ${BLUE}$INSTALL_DIR/data/auth.json${NC}"
-echo ""
