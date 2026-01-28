@@ -25,8 +25,8 @@ export default function ProjectsPage() {
 
   const filteredProjects = projects.filter((project) => {
     const matchesSearch =
-      project.name.toLowerCase().includes(search.toLowerCase()) ||
-      project.domain.toLowerCase().includes(search.toLowerCase());
+      (project.name?.toLowerCase() || "").includes(search.toLowerCase()) ||
+      (project.domain?.toLowerCase() || "").includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || project.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
@@ -85,11 +85,10 @@ export default function ProjectsPage() {
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
-                className={`flex items-center space-x-2 px-4 py-2 rounded-pill text-sm transition-colors ${
-                  statusFilter === status
-                    ? "bg-neon text-primary-foreground font-medium"
-                    : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-foreground hover:border-zinc-700"
-                }`}
+                className={`flex items-center space-x-2 px-4 py-2 rounded-pill text-sm transition-colors ${statusFilter === status
+                  ? "bg-neon text-primary-foreground font-medium"
+                  : "bg-zinc-900 border border-zinc-800 text-zinc-400 hover:text-foreground hover:border-zinc-700"
+                  }`}
               >
                 <span>{status.charAt(0).toUpperCase() + status.slice(1)}</span>
                 {statusFilter === status && <div className="w-1.5 h-1.5 bg-black rounded-pill"></div>}
@@ -140,18 +139,17 @@ export default function ProjectsPage() {
                     <div
                       key={project.id}
                       onClick={() => setSelectedId(project.id)}
-                      className={`flex items-center justify-between p-4 rounded-[1.5rem] cursor-pointer transition-all duration-200 ${
-                        isSelected
-                          ? "bg-black text-white shadow-xl scale-[1.02] z-10"
-                          : "bg-zinc-50 text-panel-foreground hover:bg-zinc-100 border border-transparent hover:border-zinc-200"
-                      }`}
+                      className={`flex items-center justify-between p-4 rounded-[1.5rem] cursor-pointer transition-all duration-200 ${isSelected
+                        ? "bg-black text-white shadow-xl scale-[1.02] z-10"
+                        : "bg-zinc-50 text-panel-foreground hover:bg-zinc-100 border border-transparent hover:border-zinc-200"
+                        }`}
                     >
                       <div className="flex items-center space-x-4">
                         <div
                           className={`w-10 h-10 rounded-pill flex items-center justify-center ${isSelected ? "bg-zinc-800" : "bg-zinc-200"}`}
                         >
                           <span className={`text-sm font-bold ${isSelected ? "text-white" : "text-zinc-600"}`}>
-                            {project.name.charAt(0).toUpperCase()}
+                            {(project.name || "?").charAt(0).toUpperCase()}
                           </span>
                         </div>
                         <div>
@@ -166,11 +164,10 @@ export default function ProjectsPage() {
 
                       <div className="flex items-center space-x-4">
                         <div
-                          className={`text-xs px-3 py-1.5 rounded-pill border transition-colors font-medium ${
-                            isSelected
-                              ? "bg-zinc-800 border-zinc-700 text-zinc-300"
-                              : "bg-panel border-zinc-200 text-zinc-700 shadow-sm"
-                          }`}
+                          className={`text-xs px-3 py-1.5 rounded-pill border transition-colors font-medium ${isSelected
+                            ? "bg-zinc-800 border-zinc-700 text-zinc-300"
+                            : "bg-panel border-zinc-200 text-zinc-700 shadow-sm"
+                            }`}
                         >
                           {project.status}
                         </div>
@@ -217,9 +214,9 @@ export default function ProjectsPage() {
                     </div>
                     <div className="text-right">
                       <p className="text-zinc-500 text-sm mb-1">Domain</p>
-                      <a 
-                        href={`http://${selectedProject.domain}`} 
-                        target="_blank" 
+                      <a
+                        href={`http://${selectedProject.domain}`}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="text-sm font-medium hover:text-neon transition-colors flex items-center gap-1 justify-end"
                       >
@@ -267,21 +264,21 @@ export default function ProjectsPage() {
                     {/* Action Bar */}
                     <div className="flex justify-end items-center space-x-4">
                       {selectedProject.status === "running" ? (
-                        <button 
+                        <button
                           onClick={() => stopProject(selectedProject.id)}
                           className="p-3 rounded-pill border border-zinc-700 hover:bg-zinc-800 text-zinc-400"
                         >
                           <Square className="w-5 h-5" />
                         </button>
                       ) : (
-                        <button 
+                        <button
                           onClick={() => startProject(selectedProject.id)}
                           className="p-3 rounded-pill border border-zinc-700 hover:bg-zinc-800 text-zinc-400"
                         >
                           <Play className="w-5 h-5" />
                         </button>
                       )}
-                      <button 
+                      <button
                         onClick={() => setDeleteTarget(selectedProject.id)}
                         className="p-3 rounded-pill border border-zinc-700 hover:bg-zinc-800 text-zinc-400"
                       >
@@ -310,7 +307,7 @@ export default function ProjectsPage() {
 
       {/* Delete Confirmation Modal */}
       {deleteTarget && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
           onClick={() => setDeleteTarget(null)}
         >

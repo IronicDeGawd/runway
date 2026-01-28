@@ -27,6 +27,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export function useDeployFlow() {
+  const navigate = useNavigate();
   const [state, setState] = React.useState<DeployState>({
     step: "upload",
     progress: 0,
@@ -50,9 +51,12 @@ export function useDeployFlow() {
     console.log('State updated to configure step');
   }, []);
 
-  const confirmConfig = React.useCallback(async () => {
-    if (!deployConfig || !deployConfig.file) {
+  const confirmConfig = React.useCallback(async (configOverride?: { file?: File, name?: string, runtime?: string }) => {
+    const finalConfig = { ...deployConfig, ...configOverride };
+    
+    if (!finalConfig || !finalConfig.file || !finalConfig.name || !finalConfig.runtime) {
         toast.error("Missing configuration");
+        console.error("Missing configuration:", finalConfig);
         return;
     }
 
@@ -61,7 +65,7 @@ export function useDeployFlow() {
 
     try {
       // Convert file to base64
-      const fileData = await fileToBase64(deployConfig.file);
+      const fileData = await fileToBase64(finalConfig.file);
       
       // Connect to WebSocket
       const token = localStorage.getItem('token');
@@ -80,8 +84,8 @@ export function useDeployFlow() {
           action: 'deploy',
           payload: {
             fileData,
-            name: deployConfig.name,
-            type: deployConfig.runtime
+            name: finalConfig.name,
+            type: finalConfig.runtime
           }
         }));
       };
@@ -89,6 +93,7 @@ export function useDeployFlow() {
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+          console.log('WS Message received:', message);
           
           if (message.type === 'deploy:progress') {
             setState(prev => ({
@@ -97,6 +102,7 @@ export function useDeployFlow() {
               progress: message.progress || prev.progress
             }));
           } else if (message.type === 'deploy:success') {
+            console.log('Deploy success received, updating state to complete');
             setState(prev => ({
               ...prev,
               step: 'complete',
@@ -108,9 +114,9 @@ export function useDeployFlow() {
             ws.close();
             
             // Navigate to projects page after 1.5 seconds
-            setTimeout(() => {
-              navigate('/projects');
-            }, 1500);
+            // setTimeout(() => {
+            //   navigate('/projects');
+            // }, 1500);
           } else if (message.type === 'deploy:error') {
             setState(prev => ({
               ...prev,

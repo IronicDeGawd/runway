@@ -1,7 +1,6 @@
 import pm2 from 'pm2';
 import path from 'path';
 import fs from 'fs-extra';
-import util from 'util';
 import { ProjectConfig } from '@pdcp/shared';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
@@ -10,19 +9,76 @@ import { activityLogger } from './activityLogger';
 import { projectRegistry } from './projectRegistry';
 import { eventBus } from '../events/eventBus';
 
-// Promisify PM2 methods
-const pm2Connect = util.promisify(pm2.connect);
-const pm2Start = util.promisify(pm2.start);
-const pm2Stop = util.promisify(pm2.stop);
-const pm2Delete = util.promisify(pm2.delete);
-const pm2Restart = util.promisify(pm2.restart);
-const pm2Disconnect = util.promisify(pm2.disconnect);
-const pm2List = util.promisify(pm2.list);
-
 const APPS_DIR = path.resolve(process.cwd(), '../apps');
 
 export class PM2Service {
   
+  // Private helpers to wrap PM2 callbacks in Promises correctly
+  
+  private connect(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      pm2.connect((err: any) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+  }
+
+  private disconnect(): void {
+    pm2.disconnect();
+  }
+
+  private list(): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      pm2.list((err: any, processList: any[]) => {
+        if (err) return reject(err);
+        resolve(processList);
+      });
+    });
+  }
+
+  private start(config: any): Promise<void> {
+    return new Promise((resolve, reject) => {
+      pm2.start(config, (err: any, proc: any) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+  }
+
+  private stop(process: string | number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      pm2.stop(process, (err: any) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+  }
+
+  private delete(process: string | number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      pm2.delete(process, (err: any) => {
+        if (err) {
+          // Ignore 'process not found' errors
+          if (err.message && err.message.includes('process or namespace not found')) {
+            return resolve();
+          }
+          return reject(err);
+        }
+        resolve();
+      });
+    });
+  }
+
+  private restart(process: string | number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      pm2.restart(process, (err: any) => {
+        if (err) return reject(err);
+        resolve();
+      });
+    });
+  }
+
   private async generateEcosystemConfig(project: ProjectConfig): Promise<any> {
     const projectDir = path.join(APPS_DIR, project.id);
     const envVars = await envService.getEnv(project.id);
@@ -69,17 +125,17 @@ export class PM2Service {
     const config = await this.generateEcosystemConfig(project);
 
     try {
-      await pm2Connect();
+      await this.connect();
       
-      // Check if already running?
-      const list = await pm2List();
+      // Check if already running
+      const list = await this.list();
       const exists = list.find((p: any) => p.name === project.id);
 
       if (exists) {
-        await pm2Delete(project.id);
+        await this.delete(project.id);
       }
 
-      await pm2Start(config);
+      await this.start(config);
       
       // Log activity
       await activityLogger.log('start', project.name, 'Service started');
@@ -98,16 +154,16 @@ export class PM2Service {
         status: 'failed'
       });
       
-      throw new AppError('Failed to start process', 500);
+      throw new AppError(`Failed to start process: ${error}`, 500);
     } finally {
-      pm2.disconnect();
+      this.disconnect();
     }
   }
 
   async stopProject(projectId: string): Promise<void> {
     try {
-      await pm2Connect();
-      await pm2Stop(projectId);
+      await this.connect();
+      await this.stop(projectId);
       
       // Log activity
       const project = await projectRegistry.getById(projectId);
@@ -124,14 +180,14 @@ export class PM2Service {
       // Ignore if not found
       logger.warn(`Failed to stop ${projectId}`, error);
     } finally {
-      pm2.disconnect();
+      this.disconnect();
     }
   }
 
   async restartProject(projectId: string): Promise<void> {
     try {
-      await pm2Connect();
-      await pm2Restart(projectId);
+      await this.connect();
+      await this.restart(projectId);
       
       // Emit event for realtime updates
       eventBus.emitEvent('process:change', {
@@ -149,13 +205,13 @@ export class PM2Service {
       
       throw new AppError('Failed to restart process', 500);
     } finally {
-      pm2.disconnect();
+      this.disconnect();
     }
   }
 
   async deleteProject(projectId: string): Promise<void> {
     try {
-      await pm2Connect();
+      await this.connect();
       
       // Log activity before deleting
       const project = await projectRegistry.getById(projectId);
@@ -163,18 +219,18 @@ export class PM2Service {
         await activityLogger.log('delete', project.name, 'Project deleted');
       }
       
-      await pm2Delete(projectId);
+      await this.delete(projectId);
     } catch (error) {
       logger.warn(`Failed to delete process ${projectId}`, error);
     } finally {
-      pm2.disconnect();
+      this.disconnect();
     }
   }
 
   async getProcesses(): Promise<any[]> {
     try {
-      await pm2Connect();
-      const list = await pm2List();
+      await this.connect();
+      const list = await this.list();
       return list.map((p: any) => ({
         name: p.name,
         pid: p.pid,
@@ -187,18 +243,15 @@ export class PM2Service {
       logger.error('Failed to list processes:', error?.message || error);
       return [];
     } finally {
-      pm2.disconnect();
+      this.disconnect();
     }
   }
 
   async reconcile(projects: ProjectConfig[]): Promise<void> {
     logger.info('Reconciling PM2 processes...');
     try {
-      await pm2Connect();
-      const list = await pm2List();
-      
-      // Stop processes not in registry (optional, safety)
-      // Start processes in registry that are missing
+      await this.connect();
+      const list = await this.list();
       
       for (const project of projects) {
         if (project.type === 'react') continue;
@@ -206,15 +259,23 @@ export class PM2Service {
         const running = list.find((p: any) => p.name === project.id);
         if (!running) {
           logger.info(`Reviving process for ${project.name}`);
-          await this.startProject(project); // This connects/disconnects internally, might be inefficient in loop but safe
+          // Note: startProject maintains its own connection cycle, so we shouldn't use it here if we want to stay connected.
+          // However, since we're iterating and startProject is complex (logging/events), let's just use it and accept the re-connection overhead for now.
+          // A better approach would be to extract the logic, but this is safer refactor-wise.
+          // Ideally we should call this.start(config) here but we need to generate config first.
+          
+          this.disconnect(); // Disconnect current connection before calling startProject which makes a new one
+          await this.startProject(project); 
+          await this.connect(); // Reconnect for next iteration
         }
       }
     } catch (error: any) {
       logger.error('Reconciliation failed:', error?.message || error);
     } finally {
-      pm2.disconnect();
+      this.disconnect();
     }
   }
 }
 
 export const pm2Service = new PM2Service();
+
