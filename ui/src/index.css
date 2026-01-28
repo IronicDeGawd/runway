@@ -1,127 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* PDCP Design System - Visual Design Guide Aligned */
+/* Admin Panel Design System - Dark theme with neon accent */
 
 @layer base {
   :root {
-    /* Background Layers - Darker for more depth */
-    --background: 225 24% 7%;
-    --foreground: 0 0% 100%;
-    
-    --surface: 225 20% 11%;
-    --surface-elevated: 225 18% 14%;
-    --surface-overlay: 225 22% 9%;
-    
-    /* Panel colors - Standard dark cards */
-    --panel: 225 18% 13%;
-    --panel-hover: 225 16% 16%;
-    --panel-active: 225 16% 18%;
-    --panel-border: 0 0% 100% / 0.06;
-    
-    /* Cutout system - Light containers for contrast */
-    --cutout: 225 14% 22%;
-    --cutout-border: 0 0% 100% / 0.10;
-    --cutout-light: 225 12% 28%;
-    --cutout-light-border: 0 0% 100% / 0.14;
-    
-    /* Card system */
-    --card: 225 18% 13%;
-    --card-foreground: 0 0% 100%;
-    --card-hover: 225 16% 16%;
-    --card-border: 0 0% 100% / 0.06;
-    
-    /* Accent - Vibrant lime green (#b4ff39) */
-    --accent-primary: 78 100% 61%;
-    --accent-primary-hover: 78 85% 53%;
-    --accent-primary-muted: 78 60% 35%;
-    --accent-primary-foreground: 225 20% 10%;
-    
-    /* Text hierarchy - Pure white to dim gray */
-    --text-primary: 0 0% 100%;
-    --text-secondary: 228 12% 67%;
-    --text-muted: 230 10% 47%;
-    --text-inverse: 225 20% 10%;
-    
-    /* Status colors */
-    --status-running: 78 100% 61%;
-    --status-stopped: 0 0% 50%;
-    --status-warning: 38 92% 55%;
-    --status-error: 0 72% 55%;
-    --status-building: 200 80% 55%;
-    
-    /* Surface state colors - subtle tints */
-    --surface-running: 78 100% 50% / 0.06;
-    --surface-error: 0 70% 50% / 0.06;
-    --surface-building: 200 80% 55% / 0.06;
-    --surface-stopped: 0 0% 50% / 0.03;
-    
-    /* Border state colors */
-    --border-running: 78 100% 61% / 0.4;
-    --border-error: 0 70% 50% / 0.4;
-    --border-building: 200 80% 55% / 0.4;
-    
-    /* Interactive elements */
-    --primary: 78 100% 61%;
-    --primary-foreground: 225 20% 10%;
-    --secondary: 225 12% 20%;
-    --secondary-foreground: 0 0% 95%;
-    --muted: 225 12% 18%;
-    --muted-foreground: 225 12% 60%;
-    --destructive: 0 72% 55%;
-    --destructive-foreground: 0 0% 100%;
-    
-    /* UI elements */
-    --border: 0 0% 100% / 0.08;
-    --input: 225 16% 15%;
-    --input-border: 225 12% 25%;
-    --ring: 78 100% 61%;
-    --popover: 225 18% 14%;
-    --popover-foreground: 0 0% 100%;
-    
-    /* Sidebar specific - Darker for depth separation */
-    --sidebar-background: 225 28% 6%;
-    --sidebar-foreground: 228 12% 67%;
-    --sidebar-primary: 78 100% 61%;
-    --sidebar-primary-foreground: 225 20% 10%;
-    --sidebar-accent: 78 100% 61% / 0.08;
-    --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 225 20% 12%;
-    --sidebar-active-border: 78 100% 61%;
-    --sidebar-ring: 78 100% 61%;
-    
-    /* Radius tokens - Larger for premium feel */
-    --radius: 0.5rem;
-    --radius-sm: 0.375rem;
-    --radius-lg: 0.75rem;
-    --radius-xl: 1rem;
-    --radius-2xl: 1.5rem;
-    --radius-3xl: 1.5rem;
-    --radius-pill: 9999px;
-    --radius-card: 24px;
-    --radius-button: 22px;
-    
-    /* Shadow tokens */
-    --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.3);
-    --shadow: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.3);
-    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.4);
-    --shadow-card: 0 4px 24px rgba(0,0,0,0.3);
-    --shadow-card-hover: 0 8px 32px rgba(0,0,0,0.4);
-    --shadow-elevated: 0 12px 40px -8px rgba(0,0,0,0.6);
-    --shadow-glow: 0 0 20px -5px hsl(78 100% 61% / 0.3);
-    --shadow-glow-accent: 0 4px 20px rgba(180,255,57,0.35);
-    --shadow-ring-glow: 0 0 12px rgba(180,255,57,0.4);
-    
-    /* Activity item backgrounds */
-    --activity-bg: 0 0% 100% / 0.03;
-    --activity-bg-hover: 0 0% 100% / 0.05;
-    
-    /* Status pill backgrounds */
-    --status-pill-default: 0 0% 100% / 0.1;
-    --status-pill-running: 78 100% 61%;
-    --status-pill-draft: 38 92% 55% / 0.15;
-    --status-pill-success: 78 100% 61% / 0.15;
+    /* Core dark theme */
+    --background: 0 0% 6%;
+    --foreground: 0 0% 98%;
+
+    /* Card surfaces */
+    --card: 0 0% 9%;
+    --card-foreground: 0 0% 98%;
+
+    /* Light panels (off-white inner panels) */
+    --panel: 0 0% 93%;
+    --panel-foreground: 240 10% 3.9%;
+
+    --popover: 0 0% 9%;
+    --popover-foreground: 0 0% 98%;
+
+    /* Neon accent */
+    --primary: 68 100% 60%;
+    --primary-foreground: 0 0% 0%;
+
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+
+    --accent: 68 100% 60%;
+    --accent-foreground: 0 0% 0%;
+
+    --destructive: 0 62.8% 50%;
+    --destructive-foreground: 0 0% 98%;
+
+    --border: 240 3.7% 20%;
+    --input: 240 3.7% 20%;
+    --ring: 68 100% 60%;
+
+    --radius: 1.5rem;
+
+    /* Zinc palette */
+    --zinc-50: 0 0% 98%;
+    --zinc-100: 240 4.8% 95.9%;
+    --zinc-200: 240 5.9% 90%;
+    --zinc-300: 240 4.9% 83.9%;
+    --zinc-400: 240 5% 64.9%;
+    --zinc-500: 240 3.8% 46.1%;
+    --zinc-600: 240 5.2% 33.9%;
+    --zinc-700: 240 5.3% 26.1%;
+    --zinc-800: 240 3.7% 15.9%;
+    --zinc-900: 240 5.9% 10%;
+    --zinc-950: 240 10% 3.9%;
+
+    /* Neon tokens */
+    --neon: 68 100% 50%;
+    --neon-hover: 68 100% 45%;
+
+    /* Surface tokens */
+    --surface: 0 0% 6%;
+    --surface-elevated: 240 5.9% 10%;
+    --surface-overlay: 240 5.3% 17%;
+    --surface-muted: 240 3.7% 15.9% / 0.5;
+
+    /* Status tokens */
+    --status-running: 160 84% 39%;
+    --status-stopped: 240 5% 64.9%;
+    --status-building: 45 93% 47%;
+    --status-error: 0 84% 60%;
+    --status-success: 160 84% 39%;
+    --status-warning: 45 93% 47%;
+    --status-info: 240 5% 64.9%;
+
+    /* Button tokens */
+    --btn-start: 160 84% 39%;
+    --btn-start-hover: 160 84% 30%;
+    --btn-stop: 0 84% 60%;
+    --btn-stop-hover: 0 72% 51%;
+    --btn-danger: 0 72% 51%;
+    --btn-danger-hover: 0 72% 45%;
+
+    /* Service type tokens */
+    --service-postgres: 217 91% 60%;
+    --service-redis: 0 84% 60%;
+    --service-default: 240 5% 46%;
+
+    /* Halo effect color */
+    --halo-color: 220 50% 90%;
+
+    /* Sidebar (unused but keeping for compatibility) */
+    --sidebar-background: 240 5.9% 10%;
+    --sidebar-foreground: 240 4.8% 95.9%;
+    --sidebar-primary: 68 100% 60%;
+    --sidebar-primary-foreground: 0 0% 0%;
+    --sidebar-accent: 240 3.7% 15.9%;
+    --sidebar-accent-foreground: 240 4.8% 95.9%;
+    --sidebar-border: 240 3.7% 15.9%;
+    --sidebar-ring: 68 100% 60%;
   }
 }
 
@@ -129,75 +109,79 @@
   * {
     @apply border-border;
   }
-  
+
   body {
-    @apply bg-background text-foreground antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1, "tnum" 1;
-  }
-  
-  /* Tabular numbers for metrics */
-  .tabular-nums {
-    font-feature-settings: "tnum" 1;
-  }
-  
-  /* Custom scrollbar */
-  ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
-  }
-  
-  ::-webkit-scrollbar-track {
-    background: hsl(var(--surface));
-  }
-  
-  ::-webkit-scrollbar-thumb {
-    background: hsl(var(--panel-border));
-    border-radius: 4px;
-  }
-  
-  ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--text-muted));
+    @apply bg-background text-foreground font-sans antialiased;
+    font-family: 'Inter', sans-serif;
   }
 }
 
-/* Animation utilities */
+@layer components {
+  /* Grid pattern overlay */
+  .grid-pattern {
+    @apply bg-grid-pattern bg-grid;
+  }
+
+  /* Animated blob */
+  .blob {
+    border-radius: 50%;
+    filter: blur(80px);
+    animation: blob-float 8s ease-in-out infinite;
+  }
+
+  @keyframes blob-float {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    33% { transform: translate(30px, -30px) scale(1.1); }
+    66% { transform: translate(-20px, 20px) scale(0.9); }
+  }
+
+  /* Neon glow effect */
+  .neon-glow {
+    @apply shadow-neon-glow-lg;
+  }
+
+  /* Terminal styling */
+  .terminal {
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* Pill button styling */
+  .pill-button {
+    @apply rounded-pill px-4 py-2 text-sm font-medium transition-all duration-200;
+  }
+
+  /* Panel cards - dark variant */
+  .panel-card {
+    @apply rounded-card border border-zinc-800 bg-surface-elevated p-card;
+  }
+
+  /* Panel cards - light variant (white slab) */
+  .panel-light {
+    @apply rounded-panel border border-zinc-200 bg-panel text-panel-foreground p-card shadow-panel;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-zinc-700;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-600;
+  }
+}
+
 @layer utilities {
-  .animate-shimmer {
-    background: linear-gradient(
-      90deg,
-      hsl(var(--panel)) 0%,
-      hsl(var(--panel-hover)) 50%,
-      hsl(var(--panel)) 100%
-    );
-    background-size: 200% 100%;
-    animation: shimmer 1.5s ease-in-out infinite;
-  }
-  
-  @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-  }
-  
-  .animate-pulse-glow {
-    animation: pulse-glow 2s ease-in-out infinite;
-  }
-  
-  @keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 0 0 hsl(var(--accent-primary) / 0); }
-    50% { box-shadow: 0 0 20px 5px hsl(var(--accent-primary) / 0.3); }
-  }
-  
-  .animate-counter {
-    animation: counter 0.5s ease-out forwards;
-  }
-  
-  .terminal-cursor {
-    animation: blink 1s step-end infinite;
-  }
-  
-  @keyframes blink {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0; }
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
   }
   
   /* Hover lift effect for cards and buttons */
@@ -223,3 +207,4 @@
     background-color: hsl(0 0% 100% / 0.03);
   }
 }
+

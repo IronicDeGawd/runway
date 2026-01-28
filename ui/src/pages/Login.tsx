@@ -1,35 +1,29 @@
 import * as React from "react";
 import { motion } from "framer-motion";
-import { useNavigate, useLocation } from "react-router-dom";
-import { Lock, Shield, ArrowRight } from "lucide-react";
-import { PDCPButton } from "@/components/pdcp/PDCPButton";
-import { PDCPInput, PasswordInput, FormField } from "@/components/pdcp/FormControls";
-
-import { api, LoginResponse } from "@/lib/api";
-import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
+import { LogIn, Eye, EyeOff } from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
+import { cn } from "@/lib/utils";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [username, setUsername] = React.useState("admin");
+  const { login } = useAuth();
+  const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
+  const [showPassword, setShowPassword] = React.useState(false);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError("");
     setIsLoading(true);
+
     try {
-      const res = await api.post<LoginResponse>('/auth/login', { username, password });
-      if (res.data.success) {
-        localStorage.setItem('token', res.data.token);
-        toast.success('LoggedIn successfully');
-        
-        // Redirect to the page user was trying to access, or home
-        const from = (location.state as any)?.from?.pathname || '/';
-        navigate(from, { replace: true });
-      }
-    } catch (error) {
-      toast.error('Login failed: Invalid credentials');
+      await login(username, password);
+      navigate("/");
+    } catch (err) {
+      setError("Invalid username or password");
     } finally {
       setIsLoading(false);
     }
@@ -37,141 +31,136 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 relative overflow-hidden">
-      {/* Background effects */}
-      <div className="absolute inset-0 overflow-hidden">
-        <motion.div
-          className="absolute top-1/4 left-1/4 w-96 h-96 bg-accent-primary/5 rounded-full blur-3xl"
-          animate={{
-            scale: [1, 1.2, 1],
-            opacity: [0.3, 0.5, 0.3],
-          }}
-          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent-primary/3 rounded-full blur-3xl"
-          animate={{
-            scale: [1.2, 1, 1.2],
-            opacity: [0.2, 0.4, 0.2],
-          }}
-          transition={{ duration: 10, repeat: Infinity, ease: "easeInOut" }}
-        />
-      </div>
+      {/* Animated Blobs */}
+      <div className="absolute top-20 left-20 w-64 h-64 bg-neon/20 rounded-full blur-3xl animate-blob" />
+      <div className="absolute bottom-20 right-20 w-80 h-80 bg-neon/10 rounded-full blur-3xl animate-blob animation-delay-2000" />
+      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-neon/5 rounded-full blur-3xl animate-blob animation-delay-4000" />
 
-      {/* Grid pattern overlay */}
-      <div
-        className="absolute inset-0 opacity-[0.02]"
-        style={{
-          backgroundImage: `linear-gradient(hsl(var(--text-primary)) 1px, transparent 1px),
-                           linear-gradient(90deg, hsl(var(--text-primary)) 1px, transparent 1px)`,
-          backgroundSize: "50px 50px"
-        }}
-      />
-
+      {/* Login Card */}
       <motion.div
+        className="relative z-10 w-full max-w-md"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="relative z-10 w-full max-w-md"
       >
-        {/* Logo and header */}
-        <div className="text-center mb-8">
-          <motion.div
-            className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-accent-primary mb-4"
-            initial={{ scale: 0.8, rotate: -10 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            <span className="text-accent-primary-foreground font-bold text-2xl">P</span>
-          </motion.div>
-          <motion.h1
-            className="text-2xl font-bold text-text-primary mb-2"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.3 }}
-          >
-            Welcome to PDCP
-          </motion.h1>
-          <motion.p
-            className="text-text-muted"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4 }}
-          >
-            Portable Deployment Control Panel
-          </motion.p>
-        </div>
+        <div className="bg-panel rounded-panel p-8 shadow-2xl">
+          {/* Logo/Header */}
+          <div className="text-center mb-8">
+            <motion.div
+              className="inline-flex items-center justify-center w-16 h-16 rounded-pill bg-neon mb-4"
+              whileHover={{ scale: 1.05 }}
+            >
+              <LogIn className="w-8 h-8 text-primary-foreground" />
+            </motion.div>
+            <h1 className="text-3xl font-light text-panel-foreground mb-2">Welcome Back</h1>
+            <p className="text-zinc-600">Sign in to your deployment dashboard</p>
+          </div>
 
-        {/* Login card */}
-        <motion.div
-          className="bg-panel border border-panel-border rounded-2xl p-6 shadow-elevated"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <form onSubmit={handleLogin} className="space-y-4">
-            <FormField label="Username or Email">
-              <PDCPInput
+          {/* Login Form */}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {error && (
+              <motion.div
+                className="p-3 rounded-element bg-red-50 border border-red-200 text-red-700 text-sm"
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                {error}
+              </motion.div>
+            )}
+
+            <div>
+              <label htmlFor="username" className="block text-sm font-medium text-zinc-700 mb-2">
+                Username
+              </label>
+              <input
+                id="username"
                 type="text"
-                placeholder="admin"
-                icon={<Lock className="w-4 h-4" />}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
+                placeholder="Enter your username"
+                className="w-full px-4 py-3 rounded-element bg-zinc-50 border border-zinc-200 text-panel-foreground placeholder:text-zinc-400 focus:outline-none focus:border-zinc-400 transition-colors"
+                required
               />
-            </FormField>
+            </div>
 
-            <FormField label="Password">
-              <PasswordInput
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </FormField>
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-zinc-700 mb-2">
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Enter your password"
+                  className="w-full px-4 py-3 pr-12 rounded-element bg-zinc-50 border border-zinc-200 text-panel-foreground placeholder:text-zinc-400 focus:outline-none focus:border-zinc-400 transition-colors"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-zinc-500 hover:text-zinc-700"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
 
             <div className="flex items-center justify-between text-sm">
-              <label className="flex items-center gap-2 text-text-secondary cursor-pointer">
-                <input type="checkbox" className="rounded border-panel-border" defaultChecked />
-                Remember me
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  className="w-4 h-4 rounded border-zinc-300 text-neon focus:ring-neon"
+                />
+                <span className="text-zinc-600">Remember me</span>
               </label>
-              <a href="#" className="text-accent-primary hover:underline">
+              <a href="#" className="text-zinc-700 hover:text-panel-foreground transition-colors">
                 Forgot password?
               </a>
             </div>
 
-            <PDCPButton
+            <motion.button
               type="submit"
-              className="w-full"
-              loading={isLoading}
+              disabled={isLoading}
+              className={cn(
+                "w-full py-3 px-6 rounded-pill font-medium transition-all flex items-center justify-center gap-2",
+                isLoading
+                  ? "bg-zinc-300 text-zinc-500 cursor-not-allowed"
+                  : "bg-neon text-primary-foreground hover:bg-neon/90"
+              )}
+              whileHover={!isLoading ? { scale: 1.02 } : {}}
+              whileTap={!isLoading ? { scale: 0.98 } : {}}
             >
-              {!isLoading && (
+              {isLoading ? (
                 <>
-                  Sign in
-                  <ArrowRight className="w-4 h-4" />
+                  <div className="w-5 h-5 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-pill animate-spin" />
+                  Signing in...
+                </>
+              ) : (
+                <>
+                  <LogIn className="w-5 h-5" />
+                  Sign In
                 </>
               )}
-            </PDCPButton>
+            </motion.button>
           </form>
 
-          {/* Security badge */}
-          <motion.div
-            className="mt-6 flex items-center justify-center gap-2 text-xs text-text-muted"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.6 }}
-          >
-            <Shield className="w-3.5 h-3.5 text-accent-primary" />
-            <span>Secured connection · TLS 1.3</span>
-          </motion.div>
-        </motion.div>
+          {/* Footer */}
+          <div className="mt-6 pt-6 border-t border-zinc-200 text-center">
+            <p className="text-sm text-zinc-600">
+              Don't have an account?{" "}
+              <a href="#" className="text-panel-foreground font-medium hover:text-zinc-700 transition-colors">
+                Sign up
+              </a>
+            </p>
+          </div>
+        </div>
 
-        {/* Footer */}
-        <motion.p
-          className="text-center text-xs text-text-muted mt-6"
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.7 }}
-        >
-          PDCP v2.0.0 · Running locally
-        </motion.p>
+        {/* Additional Info */}
+        <div className="mt-6 text-center text-sm text-zinc-400">
+          <p>Default credentials: admin / admin</p>
+        </div>
       </motion.div>
     </div>
   );

@@ -1,203 +1,140 @@
-import * as React from "react";
-import { motion } from "framer-motion";
-import {
-  Settings as SettingsIcon,
-  Moon,
-  Bell,
-  Shield,
-  Server,
-  Info,
-  RefreshCw,
-  Trash2,
-} from "lucide-react";
-import { DashboardLayout } from "@/components/pdcp/DashboardLayout";
-import { PanelCard, PanelCardHeader, PanelCardTitle, PanelCardContent } from "@/components/pdcp/PanelCard";
-import { CutoutPanel } from "@/components/pdcp/CutoutPanel";
-import { PDCPButton } from "@/components/pdcp/PDCPButton";
-import { ConfirmDialog } from "@/components/pdcp/Overlays";
-import { cn } from "@/lib/utils";
+import { useState } from 'react';
+import { DashboardLayout } from '@/components/DashboardLayout';
+import { Moon, Bell, RefreshCw, Info, AlertTriangle, ArrowLeft } from 'lucide-react';
 
-interface ToggleProps {
-  enabled: boolean;
-  onChange: (enabled: boolean) => void;
-}
-
-function Toggle({ enabled, onChange }: ToggleProps) {
+function Switch({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (checked: boolean) => void }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={enabled}
-      onClick={() => onChange(!enabled)}
-      className={cn(
-        "relative inline-flex h-6 w-11 items-center rounded-full transition-colors",
-        enabled ? "bg-accent-primary" : "bg-panel-border"
-      )}
-    >
-      <motion.span
-        className="inline-block h-4 w-4 transform rounded-full bg-white shadow-sm"
-        animate={{ x: enabled ? 24 : 4 }}
-        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+    <label className="relative inline-flex items-center cursor-pointer">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onCheckedChange(e.target.checked)}
+        className="sr-only peer"
       />
-    </button>
-  );
-}
-
-interface SettingRowProps {
-  icon: React.ElementType;
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}
-
-function SettingRow({ icon: Icon, title, description, children }: SettingRowProps) {
-  return (
-    <div className="flex items-center justify-between py-4 border-b border-panel-border last:border-0">
-      <div className="flex items-start gap-3">
-        <div className="w-10 h-10 rounded-lg bg-panel flex items-center justify-center flex-shrink-0">
-          <Icon className="w-5 h-5 text-text-muted" />
-        </div>
-        <div>
-          <p className="font-medium text-text-primary">{title}</p>
-          <p className="text-sm text-text-muted">{description}</p>
-        </div>
-      </div>
-      <div className="flex-shrink-0 ml-4">{children}</div>
-    </div>
+      <div className="w-11 h-6 bg-zinc-700 peer-focus:outline-none rounded-pill peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-pill after:h-5 after:w-5 after:transition-all peer-checked:bg-neon"></div>
+    </label>
   );
 }
 
 export default function SettingsPage() {
-  const [darkMode, setDarkMode] = React.useState(true);
-  const [notifications, setNotifications] = React.useState(true);
-  const [autoRestart, setAutoRestart] = React.useState(true);
-  const [showResetDialog, setShowResetDialog] = React.useState(false);
+  const [darkMode, setDarkMode] = useState(true);
+  const [notifications, setNotifications] = useState(true);
+  const [autoRestart, setAutoRestart] = useState(false);
 
   return (
     <DashboardLayout>
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="px-8 pb-8 pt-2 space-y-6 animate-fade-in">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-text-primary">Settings</h1>
-          <p className="text-text-muted text-sm mt-1">Configure your PDCP instance</p>
+        <div className="flex items-center space-x-4">
+          <button className="p-2 rounded-pill bg-zinc-900 border border-zinc-800 hover:bg-surface-overlay">
+            <ArrowLeft className="w-5 h-5 text-zinc-400" />
+          </button>
+          <div>
+            <h1 className="text-4xl font-light text-foreground">Settings</h1>
+            <p className="text-zinc-500 mt-1">Manage your preferences and system configuration</p>
+          </div>
         </div>
 
-        {/* Settings wrapped in CutoutPanel for depth */}
-        <CutoutPanel variant="light" padding="lg" animate>
-          {/* Appearance */}
-          <div className="mb-6">
-            <h2 className="font-semibold text-text-primary flex items-center gap-2 mb-4">
-              <SettingsIcon className="w-4 h-4" />
-              Appearance
-            </h2>
-            <SettingRow
-              icon={Moon}
-              title="Dark Mode"
-              description="Use dark theme for the interface"
-            >
-              <Toggle enabled={darkMode} onChange={setDarkMode} />
-            </SettingRow>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* User Preferences - Dark Panel */}
+          <div className="bg-surface-elevated rounded-card p-card border border-zinc-800">
+            <h2 className="text-lg font-semibold text-foreground mb-6">User Preferences</h2>
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-element bg-zinc-800 border border-zinc-700">
+                    <Moon className="h-5 w-5 text-zinc-400" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">Dark Mode</p>
+                    <p className="text-sm text-zinc-500">Use dark theme across the dashboard</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={darkMode}
+                  onCheckedChange={setDarkMode}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-element bg-zinc-800 border border-zinc-700">
+                    <Bell className="h-5 w-5 text-zinc-400" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">Notifications</p>
+                    <p className="text-sm text-zinc-500">Receive alerts and updates</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={notifications}
+                  onCheckedChange={setNotifications}
+                />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-element bg-zinc-800 border border-zinc-700">
+                    <RefreshCw className="h-5 w-5 text-zinc-400" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-foreground">Auto-Restart</p>
+                    <p className="text-sm text-zinc-500">Automatically restart failed projects</p>
+                  </div>
+                </div>
+                <Switch
+                  checked={autoRestart}
+                  onCheckedChange={setAutoRestart}
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Notifications */}
-          <div className="mb-6 pt-4 border-t border-panel-border">
-            <h2 className="font-semibold text-text-primary flex items-center gap-2 mb-4">
-              <Bell className="w-4 h-4" />
-              Notifications
-            </h2>
-            <SettingRow
-              icon={Bell}
-              title="Desktop Notifications"
-              description="Receive notifications for deployments and errors"
-            >
-              <Toggle enabled={notifications} onChange={setNotifications} />
-            </SettingRow>
-          </div>
-
-          {/* System */}
-          <div className="pt-4 border-t border-panel-border">
-            <h2 className="font-semibold text-text-primary flex items-center gap-2 mb-4">
-              <Server className="w-4 h-4" />
-              System
-            </h2>
-            <SettingRow
-              icon={RefreshCw}
-              title="Auto-Restart Crashed Services"
-              description="Automatically restart services that crash unexpectedly"
-            >
-              <Toggle enabled={autoRestart} onChange={setAutoRestart} />
-            </SettingRow>
-          </div>
-        </CutoutPanel>
-
-        {/* System Info */}
-        <CutoutPanel variant="default" padding="lg" animate delay={0.1}>
-          <div className="flex items-center gap-2 mb-4">
-            <Info className="w-4 h-4 text-text-muted" />
-            <h3 className="font-semibold text-text-primary">System Information</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-text-muted">Version</span>
-              <p className="text-text-primary font-mono">v2.0.0</p>
+          {/* System Info - Dark Panel */}
+          <div className="bg-surface-elevated rounded-card p-card border border-zinc-800">
+            <div className="flex items-center gap-2 mb-6">
+              <Info className="h-5 w-5 text-neon" />
+              <h2 className="text-lg font-semibold text-foreground">System Information</h2>
             </div>
-            <div>
-              <span className="text-text-muted">Build</span>
-              <p className="text-text-primary font-mono">2024.01.20</p>
-            </div>
-            <div>
-              <span className="text-text-muted">Runtime</span>
-              <p className="text-text-primary font-mono">Node.js 20.x</p>
-            </div>
-            <div>
-              <span className="text-text-muted">Platform</span>
-              <p className="text-text-primary font-mono">Linux x64</p>
-            </div>
-            <div>
-              <span className="text-text-muted">Container</span>
-              <p className="text-text-primary font-mono">Docker 24.0</p>
-            </div>
-            <div>
-              <span className="text-text-muted">Uptime</span>
-              <p className="text-text-primary font-mono">14d 6h 32m</p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
+                <span className="text-zinc-400">Version</span>
+                <span className="font-medium text-foreground">v2.0.0</span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
+                <span className="text-zinc-400">Runtime</span>
+                <span className="font-medium text-foreground">Node 20.x</span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
+                <span className="text-zinc-400">Platform</span>
+                <span className="font-medium text-foreground">Linux x64</span>
+              </div>
+              <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
+                <span className="text-zinc-400">Last Updated</span>
+                <span className="font-medium text-foreground">Jan 15, 2024</span>
+              </div>
             </div>
           </div>
-        </CutoutPanel>
+        </div>
 
         {/* Danger Zone */}
-        <PanelCard padding="lg" className="border-status-error/30">
-          <PanelCardHeader>
-            <PanelCardTitle className="text-status-error flex items-center gap-2">
-              <Shield className="w-4 h-4" />
-              Danger Zone
-            </PanelCardTitle>
-          </PanelCardHeader>
-          <PanelCardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-status-error/5 rounded-lg border border-status-error/20">
-              <div>
-                <p className="font-medium text-text-primary">Reset PDCP</p>
-                <p className="text-sm text-text-muted">
-                  Stop all services and remove all data
-                </p>
-              </div>
-              <PDCPButton variant="danger" onClick={() => setShowResetDialog(true)}>
-                <Trash2 className="w-4 h-4" />
-                Reset
-              </PDCPButton>
+        <div className="bg-red-950/20 rounded-card p-card border border-red-900/30">
+          <div className="flex items-start gap-4">
+            <div className="p-3 rounded-element bg-red-900/20">
+              <AlertTriangle className="h-6 w-6 text-red-400" />
             </div>
-          </PanelCardContent>
-        </PanelCard>
+            <div className="flex-1">
+              <h2 className="text-lg font-semibold text-red-400 mb-2">Danger Zone</h2>
+              <p className="text-zinc-400 mb-4">
+                Reset all settings to their default values. This action cannot be undone and will restart all services.
+              </p>
+              <button className="bg-red-600 text-white font-semibold px-6 py-2 rounded-pill hover:bg-red-700 transition-colors">
+                Factory Reset
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
-
-      <ConfirmDialog
-        open={showResetDialog}
-        onClose={() => setShowResetDialog(false)}
-        onConfirm={() => setShowResetDialog(false)}
-        title="Reset PDCP?"
-        description="This will stop all running services and permanently delete all projects, data, and configurations. This action cannot be undone."
-        confirmLabel="Reset Everything"
-        variant="danger"
-      />
     </DashboardLayout>
   );
 }

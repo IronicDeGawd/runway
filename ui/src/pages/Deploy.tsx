@@ -1,345 +1,357 @@
-import * as React from "react";
-import { motion } from "framer-motion";
-import { useNavigate } from "react-router-dom";
-import {
-  Upload,
-  FileArchive,
-  Check,
-  ChevronRight,
-  Server,
-  Code,
-  Globe,
-  Zap,
-} from "lucide-react";
-import { DashboardLayout } from "@/components/pdcp/DashboardLayout";
-import { PanelCard, PanelCardHeader, PanelCardTitle, PanelCardContent } from "@/components/pdcp/PanelCard";
-import { CutoutPanel } from "@/components/pdcp/CutoutPanel";
-import { PDCPButton } from "@/components/pdcp/PDCPButton";
-import { PDCPInput, FormField } from "@/components/pdcp/FormControls";
-import { ProgressStepper, ProgressBar, Spinner } from "@/components/pdcp/ProgressElements";
-import { Terminal } from "@/components/pdcp/Terminal";
-import { StatusPill } from "@/components/pdcp/StatusPill";
-import { useDeployFlow, DeployStep } from "@/hooks/useDeployFlow";
-import { cn } from "@/lib/utils";
+import { useState, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { DashboardLayout } from '@/components/DashboardLayout';
+import { Upload, Check, ArrowRight, ArrowLeft } from 'lucide-react';
+import { useDeployFlow } from '@/hooks/useDeployFlow';
 
-const runtimes = [
-  { id: "react", label: "React", icon: Globe, description: "React / Vite / CRA apps" },
-  { id: "next", label: "Next.js", icon: Server, description: "Next.js framework" },
-  { id: "node", label: "Node.js", icon: Code, description: "Express / Node.js apps" },
+type Step = 'upload' | 'configure' | 'build' | 'deploy';
+
+const steps: { id: Step; label: string }[] = [
+  { id: 'upload', label: 'Upload' },
+  { id: 'configure', label: 'Configure' },
+  { id: 'build', label: 'Build' },
+  { id: 'deploy', label: 'Deploy' },
 ];
 
-const steps = [
-  { id: "upload", label: "Upload" },
-  { id: "configure", label: "Configure" },
-  { id: "build", label: "Build" },
-  { id: "deploy", label: "Deploy" },
+const runtimes = [
+  { id: 'react', label: 'React', icon: '⚛️' },
+  { id: 'nextjs', label: 'Next.js', icon: '▲' },
+  { id: 'nodejs', label: 'Node.js', icon: '⬢' },
 ];
 
 export default function DeployPage() {
   const navigate = useNavigate();
-  const { state, isDeploying, startDeploy, confirmConfig, reset } = useDeployFlow();
-  const [selectedRuntime, setSelectedRuntime] = React.useState("react");
-  const [projectName, setProjectName] = React.useState("");
-  const [dragOver, setDragOver] = React.useState(false);
-  const [uploadedFile, setUploadedFile] = React.useState<File | null>(null);
+  const { state, startDeploy } = useDeployFlow();
+  const [currentStep, setCurrentStep] = useState<Step>('upload');
+  const [projectName, setProjectName] = useState('');
+  const [selectedRuntime, setSelectedRuntime] = useState('react');
+  const [file, setFile] = useState<File | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [buildProgress, setBuildProgress] = useState(0);
+  const [isBuilding, setIsBuilding] = useState(false);
+  const [buildLogs, setBuildLogs] = useState<Array<{ timestamp: string; level: 'info' | 'warn' | 'error' | 'success'; message: string }>>([]);
 
-  const currentStepIndex = steps.findIndex((s) => s.id === state.step);
+  const stepIndex = steps.findIndex((s) => s.id === currentStep);
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    setDragOver(false);
-    const file = e.dataTransfer.files[0];
-    if (file) {
-      setUploadedFile(file);
+    setIsDragOver(false);
+    const droppedFile = e.dataTransfer.files[0];
+    if (droppedFile?.name.endsWith('.zip')) {
+      setFile(droppedFile);
+    }
+  }, []);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      setFile(selectedFile);
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setUploadedFile(file);
+  const simulateBuild = async () => {
+    setIsBuilding(true);
+    setBuildLogs([]);
+    setBuildProgress(0);
+
+    const logMessages = [
+      { delay: 300, level: 'info' as const, message: 'Installing dependencies...' },
+      { delay: 800, level: 'info' as const, message: 'npm install completed' },
+      { delay: 400, level: 'info' as const, message: 'Running build script...' },
+      { delay: 600, level: 'info' as const, message: 'Compiling TypeScript...' },
+      { delay: 500, level: 'warn' as const, message: 'Warning: unused variable detected' },
+      { delay: 400, level: 'info' as const, message: 'Bundling assets...' },
+      { delay: 700, level: 'info' as const, message: 'Optimizing for production...' },
+      { delay: 500, level: 'success' as const, message: 'Build completed successfully!' },
+    ];
+
+    let progress = 0;
+    const progressStep = 100 / logMessages.length;
+
+    for (const log of logMessages) {
+      await new Promise((resolve) => setTimeout(resolve, log.delay));
+      const now = new Date();
+      const timestamp = now.toTimeString().split(' ')[0];
+      setBuildLogs((prev) => [...prev, { timestamp, level: log.level, message: log.message }]);
+      progress += progressStep;
+      setBuildProgress(Math.min(progress, 100));
+    }
+
+    setIsBuilding(false);
+  };
+
+  const nextStep = async () => {
+    if (currentStep === 'upload' && file) {
+      startDeploy(file, { runtime: selectedRuntime, name: projectName });
+    }
+    if (currentStep === 'build' && buildProgress === 0) {
+      await simulateBuild();
+    }
+    const nextIndex = stepIndex + 1;
+    if (nextIndex < steps.length) {
+      setCurrentStep(steps[nextIndex].id);
     }
   };
 
-  const handleStartUpload = () => {
-    if (uploadedFile) {
-      startDeploy(uploadedFile, { runtime: selectedRuntime, name: projectName });
-    } else {
-      console.log('No file uploaded!');
+  const prevStep = () => {
+    const prevIndex = stepIndex - 1;
+    if (prevIndex >= 0) {
+      setCurrentStep(steps[prevIndex].id);
+    }
+  };
+
+  const canProceed = () => {
+    switch (currentStep) {
+      case 'upload':
+        return file !== null;
+      case 'configure':
+        return projectName.length > 0;
+      case 'build':
+        return buildProgress === 100;
+      case 'deploy':
+        return true;
+      default:
+        return false;
     }
   };
 
   return (
     <DashboardLayout>
-      <div className="max-w-3xl mx-auto space-y-6">
+      <div className="px-8 pb-8 pt-2 space-y-8 animate-fade-in">
         {/* Header */}
-        <div className="text-center">
-          <h1 className="text-2xl font-bold text-text-primary">Deploy New Project</h1>
-          <p className="text-text-muted text-sm mt-1">Upload your code and we'll handle the rest</p>
+        <div className="flex items-center space-x-4">
+          <button onClick={() => navigate('/projects')} className="p-2 rounded-pill bg-zinc-900 border border-zinc-800 hover:bg-surface-overlay">
+            <ArrowLeft className="w-5 h-5 text-zinc-400" />
+          </button>
+          <h1 className="text-4xl font-light text-foreground">Deploy New Project</h1>
         </div>
 
-        {/* Progress stepper */}
-        <ProgressStepper steps={steps} currentStep={currentStepIndex} className="justify-center" />
+        {/* Progress Stepper */}
+        <div className="flex items-center justify-between mb-8">
+          {steps.map((step, index) => (
+            <div key={step.id} className="flex items-center flex-1">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-10 h-10 rounded-pill flex items-center justify-center font-medium text-sm transition-all ${
+                    index < stepIndex
+                      ? 'bg-neon text-primary-foreground'
+                      : index === stepIndex
+                      ? 'bg-neon text-primary-foreground shadow-neon-glow'
+                      : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                  }`}
+                >
+                  {index < stepIndex ? <Check className="h-5 w-5" /> : index + 1}
+                </div>
+                <span
+                  className={`text-sm font-medium hidden sm:block ${
+                    index <= stepIndex ? 'text-foreground' : 'text-zinc-500'
+                  }`}
+                >
+                  {step.label}
+                </span>
+              </div>
+              {index < steps.length - 1 && (
+                <div
+                  className={`flex-1 h-0.5 mx-4 ${
+                    index < stepIndex ? 'bg-neon' : 'bg-zinc-800'
+                  }`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
 
-        {/* Step content - wrapped in CutoutPanel for depth */}
-        <CutoutPanel variant="light" padding="lg" animate>
-          {state.step === "upload" && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="space-y-6"
-            >
-              {/* Upload zone */}
+        {/* Step Content - Dark Container */}
+        <div className="bg-surface-elevated rounded-card p-8 border border-zinc-800 min-h-[400px]">
+          {currentStep === 'upload' && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-semibold text-foreground">Upload Your Project</h2>
               <div
-                className={cn(
-                  "relative border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer",
-                  dragOver
-                    ? "border-accent-primary bg-accent-primary/5"
-                    : uploadedFile
-                    ? "border-status-running bg-status-running/5"
-                    : "border-panel-border hover:border-card-border hover:bg-panel-hover"
-                )}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                onDragLeave={() => setDragOver(false)}
                 onDrop={handleDrop}
-                onClick={() => document.getElementById("file-input")?.click()}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragOver(true);
+                }}
+                onDragLeave={() => setIsDragOver(false)}
+                className={`border-2 border-dashed rounded-inner p-12 text-center transition-all relative ${
+                  isDragOver
+                    ? 'border-neon bg-neon/10'
+                    : file
+                    ? 'border-status-success bg-status-success/10'
+                    : 'border-zinc-700 hover:border-zinc-600'
+                }`}
               >
-                <input
-                  id="file-input"
-                  type="file"
-                  accept=".zip,.tar,.tar.gz"
-                  className="hidden"
-                  onChange={handleFileSelect}
-                />
-                <motion.div
-                  animate={{ scale: dragOver ? 1.05 : 1 }}
-                  transition={{ duration: 0.2 }}
-                >
-                  {uploadedFile ? (
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-status-running/20 flex items-center justify-center">
-                        <Check className="w-6 h-6 text-status-running" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-text-primary">{uploadedFile.name}</p>
-                        <p className="text-sm text-text-muted">
-                          {(uploadedFile.size / 1024 / 1024).toFixed(2)} MB
-                        </p>
-                      </div>
+                {file ? (
+                  <div className="space-y-2">
+                    <div className="w-16 h-16 mx-auto rounded-pill bg-status-success/20 flex items-center justify-center">
+                      <Check className="h-8 w-8 text-status-success" />
                     </div>
-                  ) : (
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-12 h-12 rounded-full bg-panel flex items-center justify-center">
-                        <Upload className="w-6 h-6 text-text-muted" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-text-primary">Drop your ZIP file here</p>
-                        <p className="text-sm text-text-muted">or click to browse</p>
-                      </div>
-                    </div>
-                  )}
-                </motion.div>
-              </div>
-
-              {/* Runtime selection */}
-              <FormField label="Select Project Type">
-                <div className="grid grid-cols-3 gap-3">{runtimes.map((runtime) => (
-                    <motion.button
-                      key={runtime.id}
-                      type="button"
-                      onClick={() => setSelectedRuntime(runtime.id)}
-                      className={cn(
-                        "flex items-center gap-3 p-3 rounded-lg border text-left transition-all",
-                        selectedRuntime === runtime.id
-                          ? "border-accent-primary bg-accent-primary/5"
-                          : "border-panel-border hover:border-card-border hover:bg-panel-hover"
-                      )}
-                      whileHover={{ scale: 1.01 }}
-                      whileTap={{ scale: 0.99 }}
+                    <p className="font-medium text-foreground">{file.name}</p>
+                    <p className="text-sm text-zinc-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+                    <button
+                      onClick={() => setFile(null)}
+                      className="mt-4 px-4 py-2 rounded-pill border border-zinc-700 text-zinc-400 hover:bg-surface-overlay text-sm"
                     >
-                      <div className={cn(
-                        "w-10 h-10 rounded-lg flex items-center justify-center",
-                        selectedRuntime === runtime.id ? "bg-accent-primary/20" : "bg-panel"
-                      )}>
-                        <runtime.icon className={cn(
-                          "w-5 h-5",
-                          selectedRuntime === runtime.id ? "text-accent-primary" : "text-text-muted"
-                        )} />
-                      </div>
-                      <div>
-                        <p className="font-medium text-text-primary text-sm">{runtime.label}</p>
-                        <p className="text-xs text-text-muted">{runtime.description}</p>
-                      </div>
-                    </motion.button>
-                  ))}
-                </div>
-              </FormField>
-
-              {/* Project name */}
-              <FormField label="Project Name" required>
-                <PDCPInput
-                  placeholder="my-awesome-app"
-                  value={projectName}
-                  onChange={(e) => setProjectName(e.target.value)}
-                />
-              </FormField>
-
-              {/* Action */}
-              <div className="flex justify-end">
-                <PDCPButton
-                  onClick={() => {
-                    handleStartUpload();
-                  }}
-                  disabled={!uploadedFile || !projectName}
-                >
-                  Continue
-                  <ChevronRight className="w-4 h-4" />
-                </PDCPButton>
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="w-16 h-16 mx-auto rounded-pill bg-zinc-800 flex items-center justify-center">
+                      <Upload className="h-8 w-8 text-zinc-400" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-foreground">
+                        Drag and drop your .zip file here
+                      </p>
+                      <p className="text-sm text-zinc-500 mt-1">or click to browse</p>
+                    </div>
+                    <input
+                      type="file"
+                      accept=".zip"
+                      onChange={handleFileChange}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                    />
+                  </div>
+                )}
               </div>
-            </motion.div>
+            </div>
           )}
 
-          {state.step === "configure" && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="space-y-6"
-            >
-              <div className="text-center">
-                <div className="w-16 h-16 rounded-full bg-accent-primary/20 flex items-center justify-center mx-auto mb-4">
-                  <FileArchive className="w-8 h-8 text-accent-primary" />
+          {currentStep === 'configure' && (
+            <div className="space-y-6">
+              <h2 className="text-xl font-semibold text-foreground">Configure Your Project</h2>
+              
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Project Name</label>
+                  <input
+                    type="text"
+                    value={projectName}
+                    onChange={(e) => setProjectName(e.target.value)}
+                    placeholder="my-awesome-project"
+                    className="w-full px-4 py-3 rounded-element border border-zinc-700 bg-zinc-800 focus:outline-none focus:border-zinc-600 text-foreground placeholder:text-zinc-500"
+                  />
                 </div>
-                <h3 className="text-lg font-semibold text-text-primary">Upload Complete</h3>
-                <p className="text-sm text-text-muted mt-1">Ready to build and deploy</p>
-              </div>
 
-              <div className="bg-surface rounded-lg p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-text-muted">Project</span>
-                  <span className="text-text-primary font-medium">{projectName}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-text-muted">Runtime</span>
-                  <StatusPill variant="default">{selectedRuntime}</StatusPill>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-text-muted">File</span>
-                  <span className="text-text-primary">{uploadedFile?.name}</span>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Runtime</label>
+                  <div className="flex gap-3">
+                    {runtimes.map((runtime) => (
+                      <button
+                        key={runtime.id}
+                        onClick={() => setSelectedRuntime(runtime.id)}
+                        className={`flex-1 p-4 rounded-element border-2 transition-all ${
+                          selectedRuntime === runtime.id
+                            ? 'border-neon bg-neon/10'
+                            : 'border-zinc-700 hover:border-zinc-600'
+                        }`}
+                      >
+                        <span className="text-2xl mb-2 block">{runtime.icon}</span>
+                        <span className="font-medium text-foreground">{runtime.label}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-
-              <div className="flex justify-between">
-                <PDCPButton variant="secondary" onClick={reset}>
-                  Back
-                </PDCPButton>
-                <PDCPButton onClick={confirmConfig}>
-                  Start Build
-                  <ChevronRight className="w-4 h-4" />
-                </PDCPButton>
-              </div>
-            </motion.div>
+            </div>
           )}
 
-          {(state.step === "build" || state.step === "deploy") && !state.error && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="space-y-6"
-            >
-              <div className="flex items-center gap-4">
-                <Spinner size="md" />
-                <div>
-                  <h3 className="font-semibold text-text-primary">
-                    {state.step === "build" ? "Building..." : "Deploying..."}
-                  </h3>
-                  <p className="text-sm text-text-muted">
-                    {state.step === "build" ? "Compiling your application" : "Publishing to production"}
-                  </p>
+          {currentStep === 'build' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-foreground">Building Your Project</h2>
+                {!isBuilding && buildProgress === 0 && (
+                  <button 
+                    onClick={simulateBuild} 
+                    className="bg-neon text-primary-foreground font-semibold px-6 py-2 rounded-pill hover:bg-neon-hover transition-colors"
+                  >
+                    Start Build
+                  </button>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-zinc-500">Build Progress</span>
+                  <span className="font-medium text-foreground">{Math.round(buildProgress)}%</span>
+                </div>
+                <div className="h-2 bg-zinc-800 rounded-pill overflow-hidden">
+                  <div 
+                    className="h-full bg-neon transition-all duration-300"
+                    style={{ width: `${buildProgress}%` }}
+                  />
                 </div>
               </div>
 
-              <ProgressBar value={state.progress} size="md" />
-
-              <Terminal logs={state.logs} maxHeight="250px" streaming />
-            </motion.div>
+              <div className="bg-zinc-900 rounded-inner p-4 h-[250px] overflow-y-auto font-mono text-sm border border-zinc-800">
+                {buildLogs.map((log, i) => (
+                  <div key={i} className="flex gap-3 mb-1">
+                    <span className="text-zinc-500 text-xs">{log.timestamp}</span>
+                    <span className={
+                      log.level === 'success' ? 'text-green-400' :
+                      log.level === 'error' ? 'text-red-400' :
+                      log.level === 'warn' ? 'text-yellow-400' :
+                      'text-zinc-300'
+                    }>{log.message}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
-          {state.error && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="space-y-6"
-            >
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", delay: 0.2 }}
-                className="w-20 h-20 rounded-full bg-status-stopped/20 flex items-center justify-center mx-auto"
-              >
-                <div className="w-10 h-10 text-status-stopped flex items-center justify-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-10 h-10">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </div>
-              </motion.div>
-
-              <div className="text-center">
-                <h3 className="text-xl font-bold text-text-primary">Deployment Failed</h3>
-                <p className="text-text-muted mt-1">{state.error}</p>
+          {currentStep === 'deploy' && (
+            <div className="space-y-6 text-center py-8">
+              <div className="w-20 h-20 mx-auto rounded-pill bg-neon/20 flex items-center justify-center">
+                <Check className="h-10 w-10 text-neon" />
               </div>
-
-              <Terminal logs={state.logs} maxHeight="250px" />
-
-              <div className="flex justify-center gap-3">
-                <PDCPButton variant="secondary" onClick={reset}>
-                  Start Over
-                </PDCPButton>
-                <PDCPButton onClick={confirmConfig} disabled={isDeploying}>
-                  Retry Deployment
-                </PDCPButton>
-              </div>
-            </motion.div>
-          )}
-
-          {state.step === "complete" && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="text-center space-y-6"
-            >
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ type: "spring", delay: 0.2 }}
-                className="w-20 h-20 rounded-full bg-status-running/20 flex items-center justify-center mx-auto"
-              >
-                <Check className="w-10 h-10 text-status-running" />
-              </motion.div>
-
               <div>
-                <h3 className="text-xl font-bold text-text-primary">Deployment Successful!</h3>
-                <p className="text-text-muted mt-1">Your application is now live</p>
+                <h2 className="text-2xl font-semibold text-foreground">Deployment Complete!</h2>
+                <p className="text-zinc-500 mt-2">Your project is now live</p>
               </div>
-
-              <div className="bg-surface rounded-lg p-4">
-                <p className="text-xs text-text-muted uppercase tracking-wider mb-1">Your Application</p>
-                <p className="text-accent-primary font-medium">
-                  Your project is deployed and accessible on the configured port
+              <div className="p-4 rounded-element bg-zinc-800 border border-zinc-700 inline-block">
+                <span className="text-sm text-zinc-500">Your project is available at</span>
+                <p className="font-medium text-foreground mt-1">
+                  https://{projectName || 'my-project'}.example.com
                 </p>
-                <p className="text-xs text-text-muted mt-1">View details in the Projects page</p>
               </div>
-
-              <div className="flex justify-center gap-3">
-                <PDCPButton variant="secondary" onClick={reset}>
-                  Deploy Another
-                </PDCPButton>
-                <PDCPButton onClick={() => navigate("/projects")}>
-                  View Projects
-                </PDCPButton>
-              </div>
-            </motion.div>
+              <button
+                onClick={() => navigate('/projects')}
+                className="bg-neon text-primary-foreground font-semibold px-8 py-3 rounded-pill hover:bg-neon-hover transition-colors shadow-neon-glow"
+              >
+                View All Projects
+              </button>
+            </div>
           )}
-        </CutoutPanel>
+        </div>
+
+        {/* Navigation Buttons */}
+        {currentStep !== 'deploy' && (
+          <div className="flex justify-between">
+            <button
+              onClick={prevStep}
+              disabled={stepIndex === 0}
+              className={`flex items-center space-x-2 px-5 py-3 rounded-pill border border-zinc-700 text-foreground transition-colors ${
+                stepIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-surface-elevated'
+              }`}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span>Back</span>
+            </button>
+            <button
+              onClick={nextStep}
+              disabled={!canProceed() || isBuilding}
+              className={`flex items-center space-x-2 px-6 py-3 rounded-pill font-semibold transition-colors ${
+                canProceed() && !isBuilding
+                  ? 'bg-neon text-primary-foreground hover:bg-neon-hover'
+                  : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+              }`}
+            >
+              <span>{currentStep === 'build' && buildProgress === 0 ? 'Skip to Deploy' : 'Continue'}</span>
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

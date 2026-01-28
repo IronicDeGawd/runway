@@ -7,6 +7,7 @@ build
 
 # Deployment scripts with credentials
 deploy.sh
+deploy-ui.sh
 
 # Plan and documentation files
 doc/*.md
