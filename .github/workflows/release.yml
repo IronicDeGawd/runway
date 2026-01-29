@@ -1,0 +1,145 @@
+name: Create Release
+
+# Manual workflow - trigger from GitHub Actions tab
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v0.1.0-beta.1)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release (for beta versions)'
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Validate version format
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]; then
+            echo "Error: Invalid version format. Use: v0.1.0-beta.1"
+            exit 1
+          fi
+
+      - name: Clean previous builds
+        run: |
+          rm -rf server/dist ui/dist shared/dist
+          rm -rf node_modules server/node_modules ui/node_modules shared/node_modules
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build project
+        run: npm run build
+
+      - name: Verify builds
+        run: |
+          if [ ! -d "server/dist" ]; then
+            echo "Error: server/dist not found"
+            exit 1
+          fi
+          if [ ! -d "ui/dist" ]; then
+            echo "Error: ui/dist not found"
+            exit 1
+          fi
+          if [ ! -d "shared/dist" ]; then
+            echo "Error: shared/dist not found"
+            exit 1
+          fi
+          echo "All builds verified successfully"
+
+      - name: Create release package
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          ZIP_NAME="runway-release-${VERSION}.zip"
+
+          zip -r "$ZIP_NAME" \
+            server/dist \
+            ui/dist \
+            shared/dist \
+            shared/package.json \
+            server/scripts \
+            server/package.json \
+            package.json \
+            package-lock.json \
+            ecosystem.config.js \
+            install.sh \
+            -x "*.DS_Store"
+
+          # Generate checksum
+          sha256sum "$ZIP_NAME" > "${ZIP_NAME}.sha256"
+
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          echo "ZIP_PATH=$ZIP_NAME" >> $GITHUB_ENV
+
+      - name: Create Git tag
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "Release $VERSION"
+          git push origin "$VERSION"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: Release ${{ github.event.inputs.version }}
+          body: |
+            ## Runway Release ${{ github.event.inputs.version }}
+
+            ### Installation
+
+            **Quick Deploy to EC2:**
+            ```bash
+            curl -o install.sh https://raw.githubusercontent.com/${{ github.repository }}/main/install.sh
+            chmod +x install.sh
+            sudo ./install.sh ${{ github.event.inputs.version }}
+            ```
+
+            **Manual Installation:**
+            1. Download `runway-release-${{ github.event.inputs.version }}.zip`
+            2. Extract to server
+            3. Run `sudo ./install.sh`
+
+            ### What's Included
+            - Pre-built dashboard (UI)
+            - Pre-built server
+            - Production dependencies
+            - PM2 configuration
+            - Installation script
+
+            ### Requirements
+            - Ubuntu 20.04+ or Debian 11+
+            - Minimum 1GB RAM (2GB recommended)
+            - 10GB disk space
+
+            ---
+            📦 **Package Size:** ~$(du -h ${{ env.ZIP_PATH }} | cut -f1)
+            🔒 **SHA256:** See `runway-release-${{ github.event.inputs.version }}.zip.sha256`
+          prerelease: ${{ github.event.inputs.prerelease }}
+          files: |
+            ${{ env.ZIP_PATH }}
+            ${{ env.ZIP_PATH }}.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Release created
+        run: |
+          echo "✅ Release ${{ github.event.inputs.version }} created successfully!"
+          echo "📦 Download: https://github.com/${{ github.repository }}/releases/tag/${{ github.event.inputs.version }}"

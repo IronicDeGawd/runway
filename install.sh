@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# PDCP Installer Script
+# Runway Installer Script
 # Exit on error, undefined variables, and pipe failures
 set -euo pipefail
 
@@ -29,7 +29,7 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
-echo -e "${BLUE}Starting PDCP Installation...${NC}"
+echo -e "${BLUE}Starting Runway Installation...${NC}"
 
 # ============================================================================
 # CRITICAL: Check if running with sudo
@@ -73,7 +73,7 @@ fi
 # ============================================================================
 # Directory Setup
 # ============================================================================
-INSTALL_DIR="/opt/pdcp"
+INSTALL_DIR="/opt/runway"
 log_info "Creating directory structure at ${INSTALL_DIR}..."
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$INSTALL_DIR/apps"
@@ -133,7 +133,7 @@ fi
 
 if ! command -v caddy &> /dev/null; then
     log_info "Installing Caddy..."
-    apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl
+    apt-get install -y -qq apt-transport-https curl
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
     apt-get update
@@ -155,8 +155,16 @@ fi
 # Optional Docker Installation
 # ============================================================================
 echo ""
-read -p "Do you want to install Docker/Docker Compose for managed services? (y/n) " -n 1 -r
-echo
+# Check if Docker is already installed
+if command -v docker &> /dev/null; then
+    log_info "Docker is already installed: $(docker --version)"
+    read -p "Do you want to reconfigure Docker? (y/n) " -n 1 -r
+    echo
+else
+    read -p "Docker is not installed. Do you want to install Docker/Docker Compose for managed services? (y/n) " -n 1 -r
+    echo
+fi
+
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     if ! command -v docker &> /dev/null; then
         log_info "Installing Docker..."
@@ -169,27 +177,23 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
         . /etc/os-release
         OS=$ID
         VERSION_CODENAME=$VERSION_CODENAME
-        
+
         if [ "$OS" = "debian" ]; then
             DOCKER_DISTRO="debian"
         else
             DOCKER_DISTRO="ubuntu"
         fi
-        
+
         echo \
           "deb [arch=\"$(dpkg --print-architecture)\" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/${DOCKER_DISTRO} \
           ${VERSION_CODENAME} stable" | \
           tee /etc/apt/sources.list.d/docker.list > /dev/null
-        
+
         apt-get update
         apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
         log_success "Docker installed: $(docker --version)"
-        
-        log_success "Docker installed: $(docker --version)"
-    else
-        log_success "Docker is already installed: $(docker --version)"
     fi
-    
+
     # ALWAYS ensure user is in docker group, regardless of whether we just installed it or it was already there
     if ! groups "$REAL_USER" | grep -q "\bdocker\b"; then
         usermod -aG docker "$REAL_USER"
@@ -197,17 +201,17 @@ if [[ $REPLY =~ ^[Yy]$ ]]; then
     else
         log_info "$REAL_USER is already in the docker group"
     fi
-    
+
     systemctl enable docker
     systemctl start docker
-    
+
     if systemctl is-active --quiet docker; then
         log_success "Docker service is running"
     else
         log_error "Docker service failed to start"
     fi
 else
-    log_info "Skipping Docker installation"
+    log_info "Skipping Docker installation/configuration"
 fi
 
 # ============================================================================
@@ -378,11 +382,11 @@ cat > "$CADDY_DATA_DIR/Caddyfile" << 'EOF'
   }
 
   # Deployed projects - Import all site configs
-  import /opt/pdcp/data/caddy/sites/*.caddy
+  import /opt/runway/data/caddy/sites/*.caddy
 
   # Frontend SPA (fallback - must be last)
   handle {
-    root * /opt/pdcp/ui/dist
+    root * /opt/runway/ui/dist
     try_files {path} /index.html
     file_server
     encode gzip
@@ -431,7 +435,7 @@ fi
 # Grant Node.js permission to manage Caddy
 # ============================================================================
 log_info "Configuring sudoers for Caddy management..."
-SUDOERS_FILE="/etc/sudoers.d/pdcp-caddy"
+SUDOERS_FILE="/etc/sudoers.d/runway-caddy"
 cat > "$SUDOERS_FILE" << EOF
 $REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart caddy
 $REAL_USER ALL=(ALL) NOPASSWD: /usr/bin/systemctl reload caddy
@@ -459,7 +463,7 @@ echo ""
 echo -e "Useful Commands:"
 echo -e "  View logs: ${BLUE}pm2 logs${NC}"
 echo -e "  Check status: ${BLUE}pm2 status${NC}"
-echo -e "  Restart server: ${BLUE}pm2 restart pdcp-server${NC}"
+echo -e "  Restart server: ${BLUE}pm2 restart runway-server${NC}"
 echo -e "  Caddy logs: ${BLUE}journalctl -u caddy -f${NC}"
 echo ""
 echo -e "${YELLOW}Important:${NC}"
