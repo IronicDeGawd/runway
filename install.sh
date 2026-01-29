@@ -53,6 +53,17 @@ fi
 log_info "Running as: $REAL_USER (sudo mode)"
 
 # ============================================================================
+# Detect Interactive vs Automated Mode
+# ============================================================================
+if [ -t 0 ]; then
+    INTERACTIVE_MODE=true
+    log_info "Running in interactive mode"
+else
+    INTERACTIVE_MODE=false
+    log_info "Running in automated mode (using defaults)"
+fi
+
+# ============================================================================
 # Check if running on supported OS
 # ============================================================================
 if [ ! -f /etc/os-release ]; then
@@ -63,10 +74,14 @@ fi
 . /etc/os-release
 if [[ ! "$ID" =~ ^(ubuntu|debian)$ ]]; then
     log_warning "Detected OS: $ID. This script is tested on Ubuntu/Debian."
-    read -p "Continue anyway? (y/n) " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        exit 1
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        read -p "Continue anyway? (y/n) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    else
+        log_info "Continuing with automated installation..."
     fi
 fi
 
@@ -101,6 +116,11 @@ fi
 # ============================================================================
 # Dependency Checks
 # ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}                        NODE.JS & NVM INSTALLATION${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
 log_info "Checking dependencies..."
 
 if ! su - "$REAL_USER" -c "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && command -v node" &> /dev/null; then
@@ -108,7 +128,20 @@ if ! su - "$REAL_USER" -c "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nv
     
     # Install NVM as the real user
     su - "$REAL_USER" -c "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash"
-    
+
+    # Ensure NVM is available in all shell sessions by adding to .profile
+    log_info "Ensuring NVM is available in all shell sessions..."
+    NVM_INIT_SCRIPT='export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"'
+
+    if ! grep -q "NVM_DIR" "$REAL_HOME/.profile" 2>/dev/null; then
+        su - "$REAL_USER" -c "echo '$NVM_INIT_SCRIPT' >> ~/.profile"
+        log_success "NVM initialization added to ~/.profile"
+    else
+        log_info "NVM already configured in ~/.profile"
+    fi
+
     # Source NVM and install Node LTS
     su - "$REAL_USER" -c "export NVM_DIR=\"\$HOME/.nvm\" && [ -s \"\$NVM_DIR/nvm.sh\" ] && \. \"\$NVM_DIR/nvm.sh\" && nvm install --lts && nvm use --lts"
     
@@ -155,17 +188,35 @@ fi
 # Optional Docker Installation
 # ============================================================================
 echo ""
-# Check if Docker is already installed
-if command -v docker &> /dev/null; then
-    log_info "Docker is already installed: $(docker --version)"
-    read -p "Do you want to reconfigure Docker? (y/n) " -n 1 -r
-    echo
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}                        DOCKER INSTALLATION (OPTIONAL)${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+if [ "$INTERACTIVE_MODE" = true ]; then
+    # Interactive: Ask the user
+    if command -v docker &> /dev/null; then
+        log_info "Docker is already installed: $(docker --version)"
+        read -p "Do you want to reconfigure Docker? (y/n) " -n 1 -r
+        echo
+    else
+        read -p "Docker is not installed. Do you want to install Docker/Docker Compose for managed services? (y/n) " -n 1 -r
+        echo
+    fi
+    INSTALL_DOCKER=$REPLY
 else
-    read -p "Docker is not installed. Do you want to install Docker/Docker Compose for managed services? (y/n) " -n 1 -r
-    echo
+    # Automated: Use default (skip Docker)
+    if command -v docker &> /dev/null; then
+        log_info "Docker is already installed: $(docker --version)"
+        INSTALL_DOCKER="n"
+    else
+        log_info "Docker not found. Skipping installation (automated mode default)"
+        log_info "To install Docker later, run: curl -fsSL https://get.docker.com | sh"
+        INSTALL_DOCKER="n"
+    fi
 fi
 
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+if [[ $INSTALL_DOCKER =~ ^[Yy]$ ]]; then
     if ! command -v docker &> /dev/null; then
         log_info "Installing Docker..."
         apt-get update
@@ -217,6 +268,11 @@ fi
 # ============================================================================
 # Copy Pre-Built Artifacts
 # ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}                        DEPLOYING PRODUCTION ARTIFACTS${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
 # We assume the incoming directory structure is ALREADY the production artifact structure.
 # So we simply sync everything from current dir to install dir.
 log_info "Syncing production artifacts to ${INSTALL_DIR}..."
@@ -255,26 +311,64 @@ log_success "Project built successfully"
 # ============================================================================
 # Auth Setup (as real user)
 # ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}                        ADMIN CREDENTIALS SETUP${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
 log_info "Setting up admin credentials..."
 if [ ! -f "$INSTALL_DIR/data/auth.json" ]; then
-    log_info "Running interactive auth setup..."
-    su - "$REAL_USER" -c "$NVM_EXEC && cd '$INSTALL_DIR' && node server/scripts/setup-auth.js"
-    log_success "Admin credentials configured"
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        log_info "Running interactive auth setup..."
+        su - "$REAL_USER" -c "$NVM_EXEC && cd '$INSTALL_DIR' && node server/scripts/setup-auth.js"
+        log_success "Admin credentials configured"
+    else
+        # Automated mode: Create default admin/admin credentials
+        log_info "Creating default admin credentials (automated mode)"
+
+        # bcrypt hash of "admin" with salt rounds 10
+        ADMIN_HASH='$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'
+        JWT_SECRET=$(openssl rand -hex 64)
+
+        mkdir -p "$INSTALL_DIR/data"
+        cat > "$INSTALL_DIR/data/auth.json" << EOF
+{
+  "username": "admin",
+  "passwordHash": "$ADMIN_HASH",
+  "jwtSecret": "$JWT_SECRET"
+}
+EOF
+        chown "$REAL_USER:$REAL_USER" "$INSTALL_DIR/data/auth.json"
+        chmod 600 "$INSTALL_DIR/data/auth.json"
+
+        log_warning "⚠️  Default credentials: admin / admin"
+        log_info "Change password after installation: cd /opt/runway && node server/scripts/setup-auth.js"
+        log_success "Admin credentials configured"
+    fi
 else
     log_info "Auth file already exists."
-    read -p "Do you want to change the admin password? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        su - "$REAL_USER" -c "$NVM_EXEC && cd '$INSTALL_DIR' && node server/scripts/setup-auth.js"
-        log_success "Admin credentials updated"
+    if [ "$INTERACTIVE_MODE" = true ]; then
+        read -p "Do you want to change the admin password? (y/n) " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            su - "$REAL_USER" -c "$NVM_EXEC && cd '$INSTALL_DIR' && node server/scripts/setup-auth.js"
+            log_success "Admin credentials updated"
+        else
+            log_info "Keeping existing credentials"
+        fi
     else
-        log_info "Keeping existing credentials"
+        log_info "Keeping existing credentials (automated mode)"
     fi
 fi
 
 # ============================================================================
 # PM2 Setup (as real user)
 # ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}                        PM2 PROCESS MANAGER SETUP${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
 log_info "Starting Control Plane with PM2..."
 cd "$INSTALL_DIR"
 
@@ -326,6 +420,11 @@ fi
 # ============================================================================
 # Caddy Setup
 # ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}                        CADDY WEB SERVER CONFIGURATION${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
 log_info "Configuring Caddy reverse proxy..."
 
 # Backup existing Caddyfile if it exists
@@ -471,26 +570,68 @@ echo -e "  - Log out and back in for Docker group membership to take effect"
 echo -e "  - Admin credentials are stored in: ${BLUE}$INSTALL_DIR/data/auth.json${NC}"
 echo ""
 
+# Security warning for automated installations
+if [ "$INTERACTIVE_MODE" = false ]; then
+    echo ""
+    echo -e "${YELLOW}==================================${NC}"
+    echo -e "${YELLOW}⚠️  Security Warning${NC}"
+    echo -e "${YELLOW}==================================${NC}"
+    echo -e "${YELLOW}Default admin credentials were used:${NC}"
+    echo -e "  Username: ${RED}admin${NC}"
+    echo -e "  Password: ${RED}admin${NC}"
+    echo ""
+    echo -e "${YELLOW}Change the password immediately:${NC}"
+    echo -e "  ${BLUE}cd /opt/runway${NC}"
+    echo -e "  ${BLUE}node server/scripts/setup-auth.js${NC}"
+    echo ""
+fi
+
 # ============================================================================
-# Configure UFW firewall (Last step as it may reset connection)
+# Configure UFW firewall (Best effort - don't fail installation if it doesn't work)
 # ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}                        FIREWALL CONFIGURATION (UFW)${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
 if command -v ufw &> /dev/null; then
     log_info "Configuring firewall (UFW)..."
-    
+
+    # Attempt UFW configuration, but don't fail the entire install if it doesn't work
+    UFW_SUCCESS=true
+
     # Check if UFW is active
-    if ! ufw status | grep -q "Status: active"; then
+    if ! ufw status 2>/dev/null | grep -q "Status: active"; then
         # Allow SSH first to prevent lockout
-        ufw --force allow 22/tcp > /dev/null 2>&1
-        ufw --force enable
+        if ! ufw --force allow 22/tcp > /dev/null 2>&1; then
+            UFW_SUCCESS=false
+        fi
+
+        # Enable UFW (this is what commonly fails on some cloud instances)
+        if ! ufw --force enable > /dev/null 2>&1; then
+            UFW_SUCCESS=false
+        fi
     fi
-    
-    # Allow HTTP for dashboard
-    ufw allow 80/tcp > /dev/null 2>&1
-    
-    # Optionally allow HTTPS for future
-    ufw allow 443/tcp > /dev/null 2>&1
-    
-    log_success "Firewall configured"
+
+    # Allow HTTP/HTTPS
+    if ! ufw allow 80/tcp > /dev/null 2>&1; then
+        UFW_SUCCESS=false
+    fi
+
+    if ! ufw allow 443/tcp > /dev/null 2>&1; then
+        UFW_SUCCESS=false
+    fi
+
+    if [ "$UFW_SUCCESS" = true ]; then
+        log_success "Firewall configured"
+    else
+        log_warning "UFW configuration failed - firewall not enabled"
+        log_info "You can manually configure UFW later with:"
+        echo -e "  ${BLUE}sudo ufw allow 22/tcp${NC}"
+        echo -e "  ${BLUE}sudo ufw allow 80/tcp${NC}"
+        echo -e "  ${BLUE}sudo ufw allow 443/tcp${NC}"
+        echo -e "  ${BLUE}sudo ufw --force enable${NC}"
+    fi
 else
     log_info "UFW not installed, skipping firewall configuration"
 fi
