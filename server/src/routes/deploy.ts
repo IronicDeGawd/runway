@@ -7,7 +7,7 @@ import { deploymentService } from '../services/deploymentService';
 import { projectRegistry } from '../services/projectRegistry';
 import { caddyConfigManager } from '../services/caddyConfigManager';
 import { AppError } from '../middleware/errorHandler';
-import { ProjectType } from '@pdcp/shared';
+import { ProjectType } from '@runway/shared';
 
 const router = Router();
 const upload = multer({ dest: '../temp_uploads/' });

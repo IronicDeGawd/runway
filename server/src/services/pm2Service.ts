@@ -1,7 +1,7 @@
 import pm2 from 'pm2';
 import path from 'path';
 import fs from 'fs-extra';
-import { ProjectConfig } from '@pdcp/shared';
+import { ProjectConfig } from '@runway/shared';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { envManager } from './envManager';

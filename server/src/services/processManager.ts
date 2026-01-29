@@ -1,4 +1,4 @@
-import { ProjectConfig } from '@pdcp/shared';
+import { ProjectConfig } from '@runway/shared';
 import { pm2Service } from './pm2Service';
 import { staticProcessService } from './staticProcessService';
 import { projectRegistry } from './projectRegistry';

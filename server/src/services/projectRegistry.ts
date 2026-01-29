@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import lockfile from 'proper-lockfile';
-import { ProjectConfig } from '@pdcp/shared';
+import { ProjectConfig } from '@runway/shared';
 import { AppError } from '../middleware/errorHandler';
 import { logger } from '../utils/logger';
 

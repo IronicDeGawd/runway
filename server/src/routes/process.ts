@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { ProjectConfig } from '@pdcp/shared';
+import { ProjectConfig } from '@runway/shared';
 import { requireAuth } from '../middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
 import { processManager } from '../services/processManager';

@@ -1,5 +1,5 @@
 {
-  "name": "@pdcp/ui",
+  "name": "@runway/ui",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -14,7 +14,7 @@
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
-    "@pdcp/shared": "*",
+    "@runway/shared": "*",
     "@radix-ui/react-accordion": "^1.2.11",
     "@radix-ui/react-alert-dialog": "^1.1.14",
     "@radix-ui/react-aspect-ratio": "^1.1.7",

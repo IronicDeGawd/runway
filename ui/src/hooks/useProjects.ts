@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { api, ProjectsResponse, ProcessStatus } from '@/lib/api';
-import { ProjectConfig, ProjectType, ProcessStatus as SharedProcessStatus } from '@pdcp/shared';
+import { ProjectConfig, ProjectType, ProcessStatus as SharedProcessStatus } from '@runway/shared';
 import { toast } from 'sonner';
 import { useWebSocket } from '@/contexts/WebSocketContext';
 

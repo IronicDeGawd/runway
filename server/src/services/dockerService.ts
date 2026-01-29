@@ -55,20 +55,20 @@ version: '3'
 services:
   postgres:
     image: postgres:15
-    container_name: pdcp-postgres
+    container_name: runway-postgres
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: pdcp_user
-      POSTGRES_PASSWORD: pdcp_password
-      POSTGRES_DB: pdcp_db
+      POSTGRES_USER: runway_user
+      POSTGRES_PASSWORD: runway_password
+      POSTGRES_DB: runway_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7
-    container_name: pdcp-redis
+    container_name: runway-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -97,7 +97,7 @@ volumes:
     try {
       // Check both running and stopped containers
       const { stdout: allContainers } = await execAsync(
-        'docker ps -a --filter "name=pdcp-" --format "{{.Names}}\t{{.Status}}"'
+        'docker ps -a --filter "name=runway-" --format "{{.Names}}\t{{.Status}}"'
       );
       
       const containerLines = allContainers.trim().split('\n').filter(line => line);
@@ -109,8 +109,8 @@ volumes:
       }
 
       // Only add Postgres if container exists
-      if (containerMap.has('pdcp-postgres')) {
-        const statusText = containerMap.get('pdcp-postgres') || '';
+      if (containerMap.has('runway-postgres')) {
+        const statusText = containerMap.get('runway-postgres') || '';
         const isRunning = statusText.toLowerCase().includes('up');
         
         const pgService: ServiceStatus = {
@@ -121,14 +121,14 @@ volumes:
           version: '15',
           port: 5432,
           memory: 0,
-          connectionString: 'postgresql://pdcp_user:pdcp_password@localhost:5432/pdcp_db'
+          connectionString: 'postgresql://runway_user:runway_password@localhost:5432/runway_db'
         };
 
         // Get memory and version if running
         if (isRunning) {
           try {
             const { stdout: memStats } = await execAsync(
-              "docker stats pdcp-postgres --no-stream --format '{{.MemUsage}}'"
+              "docker stats runway-postgres --no-stream --format '{{.MemUsage}}'"
             );
             const memMatch = memStats.match(/([\d.]+)MiB/);
             if (memMatch) pgService.memory = Math.round(parseFloat(memMatch[1]));
@@ -138,7 +138,7 @@ volumes:
 
           try {
             const { stdout: pgVersion } = await execAsync(
-              "docker exec pdcp-postgres psql -U pdcp_user -t -c 'SELECT version()'"
+              "docker exec runway-postgres psql -U runway_user -t -c 'SELECT version()'"
             );
             const match = pgVersion.match(/PostgreSQL ([\d.]+)/);
             if (match) pgService.version = match[1];
@@ -151,8 +151,8 @@ volumes:
       }
 
       // Only add Redis if container exists
-      if (containerMap.has('pdcp-redis')) {
-        const statusText = containerMap.get('pdcp-redis') || '';
+      if (containerMap.has('runway-redis')) {
+        const statusText = containerMap.get('runway-redis') || '';
         const isRunning = statusText.toLowerCase().includes('up');
         
         const redisService: ServiceStatus = {
@@ -170,7 +170,7 @@ volumes:
         if (isRunning) {
           try {
             const { stdout: memStats } = await execAsync(
-              "docker stats pdcp-redis --no-stream --format '{{.MemUsage}}'"
+              "docker stats runway-redis --no-stream --format '{{.MemUsage}}'"
             );
             const memMatch = memStats.match(/([\d.]+)MiB/);
             if (memMatch) redisService.memory = Math.round(parseFloat(memMatch[1]));
@@ -180,7 +180,7 @@ volumes:
 
           try {
             const { stdout: redisVersion } = await execAsync(
-              "docker exec pdcp-redis redis-cli INFO SERVER | grep redis_version"
+              "docker exec runway-redis redis-cli INFO SERVER | grep redis_version"
             );
             const match = redisVersion.match(/redis_version:([\d.]+)/);
             if (match) redisService.version = match[1];
@@ -260,9 +260,9 @@ volumes:
 
     // Check if container already exists
     try {
-      const { stdout } = await execAsync('docker ps -a --filter \"name=pdcp-\" --format \"{{.Names}}\"');
+      const { stdout } = await execAsync('docker ps -a --filter \"name=runway-\" --format \"{{.Names}}\"');
       const containers = stdout.split('\\n').filter(line => line);
-      if (containers.includes(`pdcp-${type}`)) {
+      if (containers.includes(`runway-${type}`)) {
         throw new AppError(`${type} service already exists. Delete it first or start the existing one.`, 409);
       }
     } catch (error: any) {
@@ -322,16 +322,16 @@ volumes:
     let composeContent: string;
 
     if (type === 'postgres') {
-      const username = config.credentials?.username || 'pdcp_user';
-      const password = config.credentials?.password || 'pdcp_password';
-      const database = config.credentials?.database || 'pdcp_db';
+      const username = config.credentials?.username || 'runway_user';
+      const password = config.credentials?.password || 'runway_password';
+      const database = config.credentials?.database || 'runway_db';
 
       composeContent = `
 version: '3'
 services:
   postgres:
     image: postgres:15
-    container_name: pdcp-postgres
+    container_name: runway-postgres
     restart: unless-stopped
     ports:
       - "${port}:5432"
@@ -344,7 +344,7 @@ services:
 
   redis:
     image: redis:7
-    container_name: pdcp-redis
+    container_name: runway-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -362,20 +362,20 @@ version: '3'
 services:
   postgres:
     image: postgres:15
-    container_name: pdcp-postgres
+    container_name: runway-postgres
     restart: unless-stopped
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: pdcp_user
-      POSTGRES_PASSWORD: pdcp_password
-      POSTGRES_DB: pdcp_db
+      POSTGRES_USER: runway_user
+      POSTGRES_PASSWORD: runway_password
+      POSTGRES_DB: runway_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
   redis:
     image: redis:7
-    container_name: pdcp-redis
+    container_name: runway-redis
     restart: unless-stopped
     ports:
       - "${port}:6379"

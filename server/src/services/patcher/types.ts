@@ -1,4 +1,4 @@
-import { ProjectType } from '@pdcp/shared';
+import { ProjectType } from '@runway/shared';
 
 export interface PatcherContext {
   projectId: string;

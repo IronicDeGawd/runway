@@ -1,4 +1,4 @@
-import { ProjectType } from '@pdcp/shared';
+import { ProjectType } from '@runway/shared';
 import { PatcherStrategy, PatcherContext } from './types';
 import { ReactPatcher } from './reactPatcher';
 import { NextPatcher } from './nextPatcher';

@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
-import { ProjectType } from '@pdcp/shared';
+import { ProjectType } from '@runway/shared';
 
 export class BuildDetector {
   private static readonly BUILD_OUTPUTS = {

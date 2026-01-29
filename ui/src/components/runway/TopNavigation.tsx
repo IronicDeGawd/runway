@@ -44,7 +44,7 @@ export function TopNavigation({ className }: TopNavigationProps) {
           <span className="text-accent-primary-foreground font-bold text-sm">P</span>
         </div>
         <span className="font-semibold text-text-primary text-lg tracking-tight">
-          PDCP
+          Runway
         </span>
       </div>
 

@@ -5,7 +5,7 @@ import { motion, type HTMLMotionProps } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const pdcpButtonVariants = cva(
+const runwayButtonVariants = cva(
   "inline-flex items-center justify-center gap-2 whitespace-nowrap text-[13px] font-medium transition-all duration-175 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50",
   {
     variants: {
@@ -41,20 +41,20 @@ const pdcpButtonVariants = cva(
   }
 );
 
-export interface PDCPButtonProps
+export interface RunwayButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof pdcpButtonVariants> {
+    VariantProps<typeof runwayButtonVariants> {
   asChild?: boolean;
   loading?: boolean;
   icon?: React.ReactNode;
 }
 
-const PDCPButton = React.forwardRef<HTMLButtonElement, PDCPButtonProps>(
+const RunwayButton = React.forwardRef<HTMLButtonElement, RunwayButtonProps>(
   ({ className, variant, size, asChild = false, loading, icon, children, disabled, ...props }, ref) => {
     if (asChild) {
       return (
         <Slot
-          className={cn(pdcpButtonVariants({ variant, size, className }))}
+          className={cn(runwayButtonVariants({ variant, size, className }))}
           ref={ref as any}
           {...(props as any)}
         >
@@ -65,7 +65,7 @@ const PDCPButton = React.forwardRef<HTMLButtonElement, PDCPButtonProps>(
 
     return (
       <motion.button
-        className={cn(pdcpButtonVariants({ variant, size, className }))}
+        className={cn(runwayButtonVariants({ variant, size, className }))}
         ref={ref}
         disabled={disabled || loading}
         whileHover={{ scale: 1.02 }}
@@ -82,16 +82,16 @@ const PDCPButton = React.forwardRef<HTMLButtonElement, PDCPButtonProps>(
     );
   }
 );
-PDCPButton.displayName = "PDCPButton";
+RunwayButton.displayName = "RunwayButton";
 
 // Icon button wrapper
-export interface IconButtonProps extends PDCPButtonProps {}
+export interface IconButtonProps extends RunwayButtonProps {}
 
 const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
   ({ size = "icon", variant = "ghost", ...props }, ref) => {
-    return <PDCPButton ref={ref} size={size} variant={variant} {...props} />;
+    return <RunwayButton ref={ref} size={size} variant={variant} {...props} />;
   }
 );
 IconButton.displayName = "IconButton";
 
-export { PDCPButton, IconButton, pdcpButtonVariants };
+export { RunwayButton, IconButton, runwayButtonVariants };

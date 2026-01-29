@@ -21,7 +21,7 @@ const projectRoot = path.resolve(__dirname, '../..');
 const authFilePath = path.join(projectRoot, 'data', 'auth.json');
 
 console.log('==============================================');
-console.log('  PDCP Admin Setup');
+console.log('  Runway Admin Setup');
 console.log('==============================================\n');
 
 function question(query) {

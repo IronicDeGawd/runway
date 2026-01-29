@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { ProjectConfig } from '@pdcp/shared';
+import { ProjectConfig } from '@runway/shared';
 
 // API Configuration
 const API_URL = '/api'; // Use relative path, assuming proxy setup in vite.config.ts

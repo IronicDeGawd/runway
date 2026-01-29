@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Upload, X, Check, XCircle, RefreshCw } from 'lucide-react';
 import { useDeployFlow } from '@/hooks/useDeployFlow';
-import { ProjectType } from '@pdcp/shared';
+import { ProjectType } from '@runway/shared';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 

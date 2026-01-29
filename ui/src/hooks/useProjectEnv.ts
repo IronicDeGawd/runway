@@ -27,8 +27,11 @@ export function useProjectEnv(projectId: string | undefined) {
             const response = await api.post(`/env/${projectId}`, { env: vars });
             return response.data;
         },
+        onMutate: () => {
+            toast.info('Saving environment variables...');
+        },
         onSuccess: (data) => {
-            toast.success('Environment updated');
+            toast.success('Environment updated successfully');
             if (data.actionMessage) {
               toast.warning(data.actionMessage, { duration: 5000 });
             }
@@ -37,9 +40,10 @@ export function useProjectEnv(projectId: string | undefined) {
         onError: () => toast.error('Failed to update environment')
     });
 
-    return { 
-        envVars, 
-        isLoading, 
-        updateEnv: (vars: Record<string, string>) => updateEnvMutation.mutateAsync(vars) 
+    return {
+        envVars,
+        isLoading,
+        isSaving: updateEnvMutation.isPending,
+        updateEnv: (vars: Record<string, string>) => updateEnvMutation.mutateAsync(vars)
     };
 }

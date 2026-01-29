@@ -88,7 +88,7 @@ interface DrawerProps {
   className?: string;
 }
 
-export function PDCPDrawer({ open, onClose, title, children, side = "right", className }: DrawerProps) {
+export function RunwayDrawer({ open, onClose, title, children, side = "right", className }: DrawerProps) {
   React.useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();

@@ -11,7 +11,7 @@
         "skipLibCheck": true,
         "tsBuildInfoFile": "./dist/.tsbuildinfo",
         "paths": {
-            "@pdcp/shared": ["../shared/src"]
+            "@runway/shared": ["../shared/src"]
         }
     },
     "references": [

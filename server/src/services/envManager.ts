@@ -10,7 +10,7 @@ import { getAuthConfig } from '../config/auth';
 import { projectRegistry } from './projectRegistry';
 import { pm2Service } from './pm2Service';
 import { staticProcessService } from './staticProcessService';
-import { ProjectConfig } from '@pdcp/shared';
+import { ProjectConfig } from '@runway/shared';
 
 const execAsync = util.promisify(exec);
 

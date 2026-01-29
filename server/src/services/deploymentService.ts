@@ -3,7 +3,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
 import { v4 as uuidv4 } from 'uuid';
-import { ProjectConfig, PackageManager, ProjectType } from '@pdcp/shared';
+import { ProjectConfig, PackageManager, ProjectType } from '@runway/shared';
 import { extractZip } from './zipService';
 import { projectRegistry } from './projectRegistry';
 import { portManager } from './portManager';

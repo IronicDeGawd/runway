@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useProjects } from "@/hooks/useProjects";
@@ -23,9 +23,43 @@ export default function ProjectsPage() {
   const { projects, startProject, stopProject, deleteProject } = useProjects();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "stopped" | "building">("all");
-  const [selectedId, setSelectedId] = useState<string | null>(projects[0]?.id || null);
+
+  // Initialize selected project from localStorage, fallback to first project
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const saved = localStorage.getItem('selectedProjectId');
+    if (saved && projects.some(p => p.id === saved)) {
+      return saved;
+    }
+    return projects[0]?.id || null;
+  });
+
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
+
+  // Persist selected project to localStorage
+  useEffect(() => {
+    if (selectedId) {
+      localStorage.setItem('selectedProjectId', selectedId);
+    }
+  }, [selectedId]);
+
+  // Validate selectedId when projects change (e.g., project deleted)
+  useEffect(() => {
+    if (selectedId && !projects.some(p => p.id === selectedId)) {
+      const newId = projects[0]?.id || null;
+      setSelectedId(newId);
+      if (newId) {
+        localStorage.setItem('selectedProjectId', newId);
+      } else {
+        localStorage.removeItem('selectedProjectId');
+      }
+    } else if (!selectedId && projects.length > 0) {
+      // If no selection but projects exist, select first project
+      const newId = projects[0].id;
+      setSelectedId(newId);
+      localStorage.setItem('selectedProjectId', newId);
+    }
+  }, [projects, selectedId]);
 
   const filteredProjects = projects.filter((project) => {
     const matchesSearch =
@@ -234,12 +268,22 @@ export default function ProjectsPage() {
                   <div className="grid grid-cols-2 gap-4 mb-6">
                     <div className="bg-zinc-800/50 p-4 rounded-card flex justify-between items-end border border-zinc-800">
                       <span className="text-zinc-400 text-sm">CPU Usage</span>
-                      <span className="text-white text-lg font-light">{selectedProject.cpu || 0}%</span>
+                      <span className="text-white text-lg font-light">
+                        {selectedProject.runtime === 'react' ? (
+                          <span className="text-zinc-500 text-sm" title="Static site served directly via Caddy">N/A</span>
+                        ) : (
+                          `${selectedProject.cpu || 0}%`
+                        )}
+                      </span>
                     </div>
                     <div className="bg-zinc-800/50 p-4 rounded-card flex justify-between items-end border border-zinc-800">
                       <span className="text-zinc-400 text-sm">Memory</span>
                       <span className="text-white text-lg font-light">
-                        {selectedProject.memory || 0} MB
+                        {selectedProject.runtime === 'react' ? (
+                          <span className="text-zinc-500 text-sm" title="Static site served directly via Caddy">N/A</span>
+                        ) : (
+                          `${selectedProject.memory || 0} MB`
+                        )}
                       </span>
                     </div>
                     <div className="bg-zinc-800/50 p-4 rounded-card flex justify-between items-end border border-zinc-800">
@@ -311,7 +355,23 @@ export default function ProjectsPage() {
 
         {filteredProjects.length === 0 && (
           <div className="text-center py-12 px-8">
-            <p className="text-zinc-400">No projects found matching your criteria.</p>
+            {projects.length === 0 ? (
+              <div className="flex flex-col items-center gap-4">
+                <FilePlus className="w-12 h-12 text-zinc-600" />
+                <div>
+                  <p className="text-zinc-400 text-lg mb-2">No projects yet</p>
+                  <p className="text-zinc-500 text-sm mb-4">Add projects to see them here</p>
+                </div>
+                <button
+                  onClick={() => navigate('/deploy')}
+                  className="px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon/90 font-medium text-sm transition-colors"
+                >
+                  Create Project
+                </button>
+              </div>
+            ) : (
+              <p className="text-zinc-400">No projects found matching your criteria.</p>
+            )}
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from '../utils/logger';
-import { ApiResponse } from '@pdcp/shared';
+import { ApiResponse } from '@runway/shared';
 
 export class AppError extends Error {
   statusCode: number;

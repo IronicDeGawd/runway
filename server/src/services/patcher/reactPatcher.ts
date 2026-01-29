@@ -1,4 +1,4 @@
-import { ProjectType } from '@pdcp/shared';
+import { ProjectType } from '@runway/shared';
 import fs from 'fs-extra';
 import path from 'path';
 import { PatcherStrategy, PatcherContext } from './types';

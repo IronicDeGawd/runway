@@ -3,12 +3,12 @@ import { cn } from "@/lib/utils";
 import { Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 
-export interface PDCPInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
+export interface RunwayInputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   icon?: React.ReactNode;
   error?: string;
 }
 
-const PDCPInput = React.forwardRef<HTMLInputElement, PDCPInputProps>(
+const RunwayInput = React.forwardRef<HTMLInputElement, RunwayInputProps>(
   ({ className, type, icon, error, ...props }, ref) => {
     return (
       <div className="relative">
@@ -41,10 +41,10 @@ const PDCPInput = React.forwardRef<HTMLInputElement, PDCPInputProps>(
     );
   }
 );
-PDCPInput.displayName = "PDCPInput";
+RunwayInput.displayName = "RunwayInput";
 
 // Password input with toggle
-export interface PasswordInputProps extends Omit<PDCPInputProps, "type"> {
+export interface PasswordInputProps extends Omit<RunwayInputProps, "type"> {
   showToggle?: boolean;
 }
 
@@ -54,7 +54,7 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
 
     return (
       <div className="relative">
-        <PDCPInput
+        <RunwayInput
           ref={ref}
           type={showPassword ? "text" : "password"}
           className={cn(showToggle && "pr-10", className)}
@@ -80,11 +80,11 @@ const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputProps>(
 PasswordInput.displayName = "PasswordInput";
 
 // Textarea
-export interface PDCPTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
+export interface RunwayTextareaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   error?: string;
 }
 
-const PDCPTextarea = React.forwardRef<HTMLTextAreaElement, PDCPTextareaProps>(
+const RunwayTextarea = React.forwardRef<HTMLTextAreaElement, RunwayTextareaProps>(
   ({ className, error, ...props }, ref) => {
     return (
       <div>
@@ -110,15 +110,15 @@ const PDCPTextarea = React.forwardRef<HTMLTextAreaElement, PDCPTextareaProps>(
     );
   }
 );
-PDCPTextarea.displayName = "PDCPTextarea";
+RunwayTextarea.displayName = "RunwayTextarea";
 
 // Select
-export interface PDCPSelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
+export interface RunwaySelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   error?: string;
   options: { value: string; label: string }[];
 }
 
-const PDCPSelect = React.forwardRef<HTMLSelectElement, PDCPSelectProps>(
+const RunwaySelect = React.forwardRef<HTMLSelectElement, RunwaySelectProps>(
   ({ className, error, options, ...props }, ref) => {
     return (
       <div>
@@ -149,7 +149,7 @@ const PDCPSelect = React.forwardRef<HTMLSelectElement, PDCPSelectProps>(
     );
   }
 );
-PDCPSelect.displayName = "PDCPSelect";
+RunwaySelect.displayName = "RunwaySelect";
 
 // Form field wrapper
 interface FormFieldProps {
@@ -177,4 +177,4 @@ export function FormField({ label, description, required, children, className }:
   );
 }
 
-export { PDCPInput, PasswordInput, PDCPTextarea, PDCPSelect };
+export { RunwayInput, PasswordInput, RunwayTextarea, RunwaySelect };

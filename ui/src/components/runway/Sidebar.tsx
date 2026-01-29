@@ -69,7 +69,7 @@ export function Sidebar({ collapsed = false, onToggle, className }: SidebarProps
                 exit={{ opacity: 0, width: 0 }}
                 className="font-semibold text-text-primary text-lg tracking-tight overflow-hidden whitespace-nowrap"
               >
-                PDCP
+                Runway
               </motion.span>
             )}
           </AnimatePresence>

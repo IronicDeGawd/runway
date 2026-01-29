@@ -34,7 +34,7 @@ export default function ProjectDetailsPage() {
   const project = projects.find((p) => p.id === id);
   const projectActivity = activity.filter((a) => a.project === project?.name).slice(0, 10);
 
-  const { envVars, updateEnv, isLoading: envLoading } = useProjectEnv(project?.id);
+  const { envVars, updateEnv, isLoading: envLoading, isSaving } = useProjectEnv(project?.id);
   const [localEnv, setLocalEnv] = React.useState<{ name: string, value: string }[]>([]);
 
   // Sync env vars to local state when loaded
@@ -43,6 +43,14 @@ export default function ProjectDetailsPage() {
       setLocalEnv(envVars);
     }
   }, [envVars]);
+
+  // Track if env has changed from saved state
+  const hasEnvChanged = React.useMemo(() => {
+    if (!envVars || envVars.length !== localEnv.length) return true;
+
+    const localMap = new Map(localEnv.map(e => [e.name, e.value]));
+    return envVars.some(e => localMap.get(e.name) !== e.value);
+  }, [envVars, localEnv]);
 
   if (!project) {
     return (
@@ -200,9 +208,15 @@ export default function ProjectDetailsPage() {
                   </div>
                   <div className="flex justify-between p-3 bg-zinc-50 rounded-element border border-zinc-200">
                     <span className="text-sm text-zinc-600">Memory</span>
-                    <span className="text-sm font-medium text-panel-foreground">{project.memory}MB</span>
+                    <span className="text-sm font-medium text-panel-foreground">
+                      {project.runtime === 'react' ? (
+                        <span className="text-zinc-500" title="Static site served directly via Caddy">N/A</span>
+                      ) : (
+                        `${project.memory}MB`
+                      )}
+                    </span>
                   </div>
-                  {project.status === "running" && (
+                  {project.status === "running" && project.runtime !== 'react' && (
                     <div className="flex justify-between p-3 bg-zinc-50 rounded-element border border-zinc-200">
                       <span className="text-sm text-zinc-600">CPU Usage</span>
                       <span className="text-sm font-medium text-panel-foreground">{project.cpu}%</span>
@@ -214,47 +228,57 @@ export default function ProjectDetailsPage() {
               {/* Metrics Card - Dark */}
               <div className="bg-surface-elevated rounded-card p-6 border border-zinc-800">
                 <h2 className="text-xl font-semibold text-foreground mb-4">Performance Metrics</h2>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="text-zinc-400">CPU</span>
-                      <span className="text-foreground">{project.status === "running" ? project.cpu : 0}%</span>
+                {project.runtime === 'react' ? (
+                  <div className="py-8 text-center">
+                    <p className="text-zinc-500 text-sm mb-2">Static Site</p>
+                    <p className="text-zinc-600 text-xs">
+                      This React project is served directly via Caddy.<br />
+                      CPU and Memory metrics are not applicable for static sites.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-zinc-400">CPU</span>
+                        <span className="text-foreground">{project.status === "running" ? project.cpu : 0}%</span>
+                      </div>
+                      <div className="h-2 bg-zinc-800 rounded-pill overflow-hidden">
+                        <motion.div
+                          className="h-full bg-neon"
+                          initial={{ width: 0 }}
+                          animate={{ width: project.status === "running" ? `${project.cpu}%` : 0 }}
+                        />
+                      </div>
                     </div>
-                    <div className="h-2 bg-zinc-800 rounded-pill overflow-hidden">
-                      <motion.div
-                        className="h-full bg-neon"
-                        initial={{ width: 0 }}
-                        animate={{ width: project.status === "running" ? `${project.cpu}%` : 0 }}
-                      />
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-zinc-400">Memory</span>
+                        <span className="text-foreground">{project.memory}MB</span>
+                      </div>
+                      <div className="h-2 bg-zinc-800 rounded-pill overflow-hidden">
+                        <motion.div
+                          className="h-full bg-blue-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${(project.memory / 512) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex justify-between text-sm mb-2">
+                        <span className="text-zinc-400">Uptime</span>
+                        <span className="text-foreground">{project.status === "running" ? "99.9%" : "0%"}</span>
+                      </div>
+                      <div className="h-2 bg-zinc-800 rounded-pill overflow-hidden">
+                        <motion.div
+                          className="h-full bg-green-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: project.status === "running" ? "99%" : 0 }}
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="text-zinc-400">Memory</span>
-                      <span className="text-foreground">{project.memory}MB</span>
-                    </div>
-                    <div className="h-2 bg-zinc-800 rounded-pill overflow-hidden">
-                      <motion.div
-                        className="h-full bg-blue-500"
-                        initial={{ width: 0 }}
-                        animate={{ width: `${(project.memory / 512) * 100}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between text-sm mb-2">
-                      <span className="text-zinc-400">Uptime</span>
-                      <span className="text-foreground">{project.status === "running" ? "99.9%" : "0%"}</span>
-                    </div>
-                    <div className="h-2 bg-zinc-800 rounded-pill overflow-hidden">
-                      <motion.div
-                        className="h-full bg-green-500"
-                        initial={{ width: 0 }}
-                        animate={{ width: project.status === "running" ? "99%" : 0 }}
-                      />
-                    </div>
-                  </div>
-                </div>
+                )}
               </div>
             </div>
           )}
@@ -349,10 +373,10 @@ export default function ProjectDetailsPage() {
                     const newEnv = localEnv.reduce((acc, curr) => ({ ...acc, [curr.name]: curr.value }), {});
                     updateEnv(newEnv);
                   }}
-                  disabled={envLoading}
+                  disabled={!hasEnvChanged || isSaving || envLoading}
                   className="px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon/90 font-medium text-sm transition-colors disabled:opacity-50"
                 >
-                  Save Changes
+                  {isSaving ? 'Building...' : 'Save Changes'}
                 </button>
               </div>
 

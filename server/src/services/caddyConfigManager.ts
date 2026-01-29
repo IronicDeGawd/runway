@@ -2,7 +2,7 @@ import fs from 'fs-extra';
 import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
-import { ProjectConfig } from '@pdcp/shared';
+import { ProjectConfig } from '@runway/shared';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
 import { BuildDetector } from './buildDetector';
@@ -10,7 +10,7 @@ import { BuildDetector } from './buildDetector';
 const execAsync = util.promisify(exec);
 
 const APPS_DIR = path.resolve(process.cwd(), '../apps');
-const CADDY_DATA_DIR = '/opt/pdcp/data/caddy';
+const CADDY_DATA_DIR = '/opt/runway/data/caddy';
 const CADDYFILE_PATH = path.join(CADDY_DATA_DIR, 'Caddyfile');
 const SITES_DIR = path.join(CADDY_DATA_DIR, 'sites');
 
@@ -130,7 +130,7 @@ ${projectSection}
   
   # Admin panel UI (fallback - must be last)
   handle {
-    root * /opt/pdcp/ui/dist
+    root * /opt/runway/ui/dist
     try_files {path} /index.html
     file_server
     encode gzip
