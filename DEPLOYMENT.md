@@ -26,11 +26,15 @@ Complete guide for deploying Runway to production servers, specifically optimize
 ### For Existing Servers (Manual)
 
 ```bash
-# Download and run bootstrap script (installs latest release)
+# Option 1: Using curl (installs latest release)
 curl -sSL https://raw.githubusercontent.com/IronicDeGawd/runway/main/bootstrap.sh | sudo bash
+
+# Option 2: Using wget (installs latest release)
+wget -qO- https://raw.githubusercontent.com/IronicDeGawd/runway/main/bootstrap.sh | sudo bash
 
 # Or install a specific version
 curl -sSL https://raw.githubusercontent.com/IronicDeGawd/runway/main/bootstrap.sh | sudo bash -s v0.1.0-beta.1
+wget -qO- https://raw.githubusercontent.com/IronicDeGawd/runway/main/bootstrap.sh | sudo bash -s v0.1.0-beta.1
 ```
 
 ---

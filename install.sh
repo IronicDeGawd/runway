@@ -205,14 +205,13 @@ if [ "$INTERACTIVE_MODE" = true ]; then
     fi
     INSTALL_DOCKER=$REPLY
 else
-    # Automated: Use default (skip Docker)
+    # Automated: Use default (install Docker)
     if command -v docker &> /dev/null; then
         log_info "Docker is already installed: $(docker --version)"
         INSTALL_DOCKER="n"
     else
-        log_info "Docker not found. Skipping installation (automated mode default)"
-        log_info "To install Docker later, run: curl -fsSL https://get.docker.com | sh"
-        INSTALL_DOCKER="n"
+        log_info "Docker not found. Installing automatically (automated mode default)"
+        INSTALL_DOCKER="y"
     fi
 fi
 
@@ -326,8 +325,9 @@ if [ ! -f "$INSTALL_DIR/data/auth.json" ]; then
         # Automated mode: Create default admin/admin credentials
         log_info "Creating default admin credentials (automated mode)"
 
-        # bcrypt hash of "admin" with salt rounds 10
-        ADMIN_HASH='$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy'
+        # Generate bcrypt hash of "admin" using Node.js and bcryptjs
+        cd "$INSTALL_DIR"
+        ADMIN_HASH=$(su - "$REAL_USER" -c "$NVM_EXEC && cd '$INSTALL_DIR' && node -e \"const bcrypt = require('bcryptjs'); bcrypt.hash('admin', 10).then(hash => console.log(hash));\"")
         JWT_SECRET=$(openssl rand -hex 64)
 
         mkdir -p "$INSTALL_DIR/data"
