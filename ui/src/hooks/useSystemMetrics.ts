@@ -43,7 +43,6 @@ export function useSystemMetrics() {
 
   return {
     metrics: metrics || { cpu: 0, memory: 0, disk: 0, uptime: 0, totalMemory: 0, usedMemory: 0 },
-    history: [],
     isLoading
   };
 }

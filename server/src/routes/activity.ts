@@ -14,4 +14,14 @@ router.get('/', requireAuth, async (req, res, next) => {
   }
 });
 
+router.get('/stats', requireAuth, async (req, res, next) => {
+  try {
+    const hours = req.query.hours ? parseInt(req.query.hours as string) : 12;
+    const stats = await activityLogger.getHourlyStats(hours);
+    res.json({ success: true, data: stats });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export const activityRouter = router;

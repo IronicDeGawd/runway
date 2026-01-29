@@ -28,9 +28,9 @@ export function Navbar() {
       {/* Logo */}
       <Link to="/" className="flex items-center space-x-2">
         <div className="flex h-8 w-8 items-center justify-center rounded-element bg-neon">
-          <span className="text-sm font-bold text-primary-foreground">DP</span>
+          <span className="text-sm font-bold text-primary-foreground">R</span>
         </div>
-        <span className="font-semibold text-xl tracking-tight text-foreground">DeployPanel</span>
+        <span className="font-semibold text-xl tracking-tight text-foreground">Runway</span>
       </Link>
 
       {/* Center Tabs - White pill with halo */}

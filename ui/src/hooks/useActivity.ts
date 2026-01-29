@@ -45,6 +45,35 @@ export function useActivity() {
   return { activity: activity || [], isLoading };
 }
 
+export function useActivityStats(hours: number = 12) {
+  const queryClient = useQueryClient();
+  const { on, off } = useWebSocket();
+
+  const { data: stats, isLoading } = useQuery({
+    queryKey: ['activityStats', hours],
+    queryFn: async () => {
+      const res = await api.get<{success: boolean, data: number[]}>(`/activity/stats?hours=${hours}`);
+      return res.data.data;
+    },
+    staleTime: 60000, // Refresh every minute
+  });
+
+  // Refetch stats when new activity comes in
+  useEffect(() => {
+    const handleActivityNew = () => {
+      queryClient.invalidateQueries({ queryKey: ['activityStats'] });
+    };
+
+    on('activity:new', handleActivityNew);
+
+    return () => {
+      off('activity:new', handleActivityNew);
+    };
+  }, [on, off, queryClient]);
+
+  return { stats: stats || [], isLoading };
+}
+
 export function formatTimeAgo(date: string | Date): string {
   const dateObj = typeof date === 'string' ? new Date(date) : date;
   const seconds = Math.floor((new Date().getTime() - dateObj.getTime()) / 1000);

@@ -6,18 +6,20 @@ import {
   ArrowLeft,
   Filter,
   FilePlus,
+  Activity,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useSystemMetrics } from "@/hooks/useSystemMetrics";
 import { useProjects } from "@/hooks/useProjects";
-import { useActivity, formatTimeAgo } from "@/hooks/useActivity";
+import { useActivity, useActivityStats, formatTimeAgo } from "@/hooks/useActivity";
 import { cn } from "@/lib/utils";
 import { useServices } from "@/hooks/useServices";
 
 export default function OverviewPage() {
-  const { metrics, history, isLoading: metricsLoading } = useSystemMetrics();
-  const { projects, isLoading: projectsLoading, startProject, stopProject, restartProject } = useProjects();
+  const { metrics, isLoading: metricsLoading } = useSystemMetrics();
+  const { projects } = useProjects();
   const { activity, isLoading: activityLoading } = useActivity();
+  const { stats: activityStats, isLoading: statsLoading } = useActivityStats(12);
   const { services } = useServices();
 
   const runningProjects = projects.filter((p) => p.status === "running").length;
@@ -94,21 +96,33 @@ export default function OverviewPage() {
                 {/* Right: Activity Graph */}
                 <div className="w-2/3 bg-zinc-900/50 rounded-element p-4 border border-zinc-700">
                   <p className="text-xs text-zinc-400 mb-3">Activity</p>
-                  <div className="flex items-end justify-between gap-1 h-20">
-                    {(history.length > 0 ? history.slice(-12) : [35, 52, 48, 70, 45, 80, 65, 55, 90, 75, 60, 85]).map((value, i) => (
-                      <motion.div
-                        key={i}
-                        className="flex-1 bg-neon/80 rounded-sm transition-all hover:bg-neon cursor-pointer"
-                        initial={{ height: 0 }}
-                        animate={{ height: `${value}%` }}
-                        transition={{ duration: 0.3, delay: i * 0.05 }}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex justify-between mt-2">
-                    <span className="text-[10px] text-zinc-500">12h ago</span>
-                    <span className="text-[10px] text-zinc-500">Now</span>
-                  </div>
+                  {statsLoading ? (
+                    <div className="flex items-center justify-center h-20">
+                      <span className="text-xs text-zinc-500">Loading...</span>
+                    </div>
+                  ) : activityStats.length > 0 && activityStats.some((v: number) => v > 0) ? (
+                    <>
+                      <div className="flex items-end justify-between gap-1 h-20">
+                        {activityStats.map((value: number, i: number) => (
+                          <motion.div
+                            key={i}
+                            className="flex-1 bg-neon/80 rounded-sm transition-all hover:bg-neon cursor-pointer"
+                            initial={{ height: 0 }}
+                            animate={{ height: `${Math.max(value, 5)}%` }}
+                            transition={{ duration: 0.3, delay: i * 0.05 }}
+                          />
+                        ))}
+                      </div>
+                      <div className="flex justify-between mt-2">
+                        <span className="text-[10px] text-zinc-500">12h ago</span>
+                        <span className="text-[10px] text-zinc-500">Now</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-20">
+                      <p className="text-xs text-zinc-500">No activity in the last 12 hours</p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -217,6 +231,16 @@ export default function OverviewPage() {
               <div className="space-y-3">
                 {activityLoading ? (
                   <div className="text-zinc-400 text-sm">Loading activity...</div>
+                ) : activity.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center mb-3">
+                      <Activity className="w-6 h-6 text-zinc-500" />
+                    </div>
+                    <p className="text-zinc-400 font-medium mb-1">No recent activity</p>
+                    <p className="text-zinc-500 text-sm">
+                      Activity will appear here when you deploy, start, or stop projects
+                    </p>
+                  </div>
                 ) : (
                   activity.slice(0, 5).map((item) => (
                     <motion.div

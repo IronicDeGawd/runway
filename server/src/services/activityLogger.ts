@@ -75,6 +75,34 @@ class ActivityLogger {
       return [];
     }
   }
+
+  async getHourlyStats(hours: number = 12): Promise<number[]> {
+    try {
+      const raw = await fs.readFile(ACTIVITY_FILE, 'utf-8');
+      const activities: Activity[] = JSON.parse(raw);
+
+      const now = new Date();
+      const stats: number[] = new Array(hours).fill(0);
+
+      activities.forEach((activity) => {
+        const activityTime = new Date(activity.timestamp);
+        const hoursAgo = Math.floor((now.getTime() - activityTime.getTime()) / (1000 * 60 * 60));
+
+        if (hoursAgo >= 0 && hoursAgo < hours) {
+          // Index 0 = oldest (hours-1 ago), Index hours-1 = newest (now)
+          const index = hours - 1 - hoursAgo;
+          stats[index]++;
+        }
+      });
+
+      // Normalize to percentages (0-100) based on max value
+      const maxCount = Math.max(...stats, 1);
+      return stats.map(count => Math.round((count / maxCount) * 100));
+    } catch (error) {
+      logger.error('Failed to get hourly stats', error);
+      return new Array(hours).fill(0);
+    }
+  }
 }
 
 export const activityLogger = new ActivityLogger();

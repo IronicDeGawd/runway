@@ -28,7 +28,7 @@ export function TopBar({ className }: TopBarProps) {
   const notifications = [
     { id: 1, title: "Deploy successful", message: "api-gateway deployed to production", time: "2m ago", type: "success" },
     { id: 2, title: "Build failed", message: "frontend-app build failed", time: "15m ago", type: "error" },
-    { id: 3, title: "New version available", message: "PDCP v2.1.0 is ready", time: "1h ago", type: "info" },
+    { id: 3, title: "New version available", message: "Runway v2.1.0 is ready", time: "1h ago", type: "info" },
   ];
 
   return (
@@ -39,9 +39,9 @@ export function TopBar({ className }: TopBarProps) {
       {/* Logo */}
       <Link to="/" className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-accent-primary flex items-center justify-center">
-          <span className="text-accent-primary-foreground font-bold text-sm">P</span>
+          <span className="text-accent-primary-foreground font-bold text-sm">R</span>
         </div>
-        <span className="text-text-primary font-semibold hidden sm:block">PDCP</span>
+        <span className="text-text-primary font-semibold hidden sm:block">Runway</span>
       </Link>
 
       {/* Search */}
@@ -182,7 +182,7 @@ export function TopBar({ className }: TopBarProps) {
                 >
                   <div className="p-3 border-b border-panel-border">
                     <p className="text-sm font-medium text-text-primary">Admin</p>
-                    <p className="text-xs text-text-muted">admin@pdcp.local</p>
+                    <p className="text-xs text-text-muted">admin@runway.local</p>
                   </div>
                   <div className="p-1">
                     <Link

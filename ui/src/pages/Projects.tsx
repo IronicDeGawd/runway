@@ -171,53 +171,77 @@ export default function ProjectsPage() {
               </div>
 
               <div className="flex-1 p-2 overflow-y-auto space-y-2 pr-2">
-                {filteredProjects.map((project) => {
-                  const isSelected = project.id === selectedId;
-                  return (
-                    <div
-                      key={project.id}
-                      onClick={() => setSelectedId(project.id)}
-                      className={`flex items-center justify-between p-4 rounded-[1.5rem] cursor-pointer transition-all duration-200 ${isSelected
-                        ? "bg-black text-white shadow-xl scale-[1.02] z-10"
-                        : "bg-zinc-50 text-panel-foreground hover:bg-zinc-100 border border-transparent hover:border-zinc-200"
-                        }`}
-                    >
-                      <div className="flex items-center space-x-4">
-                        <div
-                          className={`w-10 h-10 rounded-pill flex items-center justify-center ${isSelected ? "bg-zinc-800" : "bg-zinc-200"}`}
-                        >
-                          <span className={`text-sm font-bold ${isSelected ? "text-white" : "text-zinc-600"}`}>
-                            {(project.name || "?").charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                        <div>
-                          <p className={`font-medium text-sm ${isSelected ? "text-white" : "text-zinc-900"}`}>
-                            {project.name}
-                          </p>
-                          <p className={`text-xs ${isSelected ? "text-zinc-400" : "text-zinc-500"}`}>
-                            {project.domain}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center space-x-4">
-                        <div
-                          className={`text-xs px-3 py-1.5 rounded-pill border transition-colors font-medium ${isSelected
-                            ? "bg-zinc-800 border-zinc-700 text-zinc-300"
-                            : "bg-panel border-zinc-200 text-zinc-700 shadow-sm"
-                            }`}
-                        >
-                          {project.status}
-                        </div>
-                      </div>
+                {filteredProjects.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full py-12 text-center">
+                    <div className="w-16 h-16 rounded-full bg-zinc-100 flex items-center justify-center mb-4">
+                      <FilePlus className="w-8 h-8 text-zinc-400" />
                     </div>
-                  );
-                })}
+                    <p className="text-zinc-600 font-medium mb-1">
+                      {projects.length === 0 ? "No projects yet" : "No projects found"}
+                    </p>
+                    <p className="text-zinc-400 text-sm mb-4">
+                      {projects.length === 0
+                        ? "Create your first project to get started"
+                        : "Try adjusting your search or filters"}
+                    </p>
+                    {projects.length === 0 && (
+                      <button
+                        onClick={() => navigate('/deploy')}
+                        className="px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon/90 font-medium text-sm transition-colors"
+                      >
+                        Create Project
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  filteredProjects.map((project) => {
+                    const isSelected = project.id === selectedId;
+                    return (
+                      <div
+                        key={project.id}
+                        onClick={() => setSelectedId(project.id)}
+                        className={`flex items-center justify-between p-4 rounded-[1.5rem] cursor-pointer transition-all duration-200 ${isSelected
+                          ? "bg-black text-white shadow-xl scale-[1.02] z-10"
+                          : "bg-zinc-50 text-panel-foreground hover:bg-zinc-100 border border-transparent hover:border-zinc-200"
+                          }`}
+                      >
+                        <div className="flex items-center space-x-4">
+                          <div
+                            className={`w-10 h-10 rounded-pill flex items-center justify-center ${isSelected ? "bg-zinc-800" : "bg-zinc-200"}`}
+                          >
+                            <span className={`text-sm font-bold ${isSelected ? "text-white" : "text-zinc-600"}`}>
+                              {(project.name || "?").charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div>
+                            <p className={`font-medium text-sm ${isSelected ? "text-white" : "text-zinc-900"}`}>
+                              {project.name}
+                            </p>
+                            <p className={`text-xs ${isSelected ? "text-zinc-400" : "text-zinc-500"}`}>
+                              {project.domain}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-4">
+                          <div
+                            className={`text-xs px-3 py-1.5 rounded-pill border transition-colors font-medium ${isSelected
+                              ? "bg-zinc-800 border-zinc-700 text-zinc-300"
+                              : "bg-panel border-zinc-200 text-zinc-700 shadow-sm"
+                              }`}
+                          >
+                            {project.status}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
             {/* Right Column: Detail */}
-            {selectedProject && (
+            {selectedProject ? (
               <div className="w-full md:w-7/12 p-4">
                 <div className="bg-zinc-900 rounded-panel h-full p-8 text-white flex flex-col relative shadow-inner border border-zinc-800">
                   {/* Header */}
@@ -349,31 +373,23 @@ export default function ProjectsPage() {
                   </div>
                 </div>
               </div>
+            ) : (
+              <div className="w-full md:w-7/12 p-4">
+                <div className="bg-zinc-900 rounded-panel h-full p-8 text-white flex flex-col items-center justify-center relative shadow-inner border border-zinc-800">
+                  <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mb-4">
+                    <Info className="w-8 h-8 text-zinc-500" />
+                  </div>
+                  <p className="text-zinc-400 font-medium mb-1">No project selected</p>
+                  <p className="text-zinc-500 text-sm text-center">
+                    {projects.length === 0
+                      ? "Create a project to see its details here"
+                      : "Select a project from the list to view details"}
+                  </p>
+                </div>
+              </div>
             )}
           </div>
         </div>
-
-        {filteredProjects.length === 0 && (
-          <div className="text-center py-12 px-8">
-            {projects.length === 0 ? (
-              <div className="flex flex-col items-center gap-4">
-                <FilePlus className="w-12 h-12 text-zinc-600" />
-                <div>
-                  <p className="text-zinc-400 text-lg mb-2">No projects yet</p>
-                  <p className="text-zinc-500 text-sm mb-4">Add projects to see them here</p>
-                </div>
-                <button
-                  onClick={() => navigate('/deploy')}
-                  className="px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon/90 font-medium text-sm transition-colors"
-                >
-                  Create Project
-                </button>
-              </div>
-            ) : (
-              <p className="text-zinc-400">No projects found matching your criteria.</p>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Delete Confirmation Modal */}
