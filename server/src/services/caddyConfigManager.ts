@@ -24,9 +24,22 @@ export class CaddyConfigManager {
       // Ensure sites directory exists
       await fs.ensureDir(SITES_DIR);
       logger.info(`Caddy sites directory ready at ${SITES_DIR}`);
-      
+
       // Regenerate main Caddyfile with current projects
       await this.updateMainCaddyfile();
+
+      // Verify the import directive exists in the main Caddyfile
+      const caddyfileContent = await fs.readFile(CADDYFILE_PATH, 'utf8');
+      if (!caddyfileContent.includes(`import ${SITES_DIR}/*.caddy`)) {
+        logger.error('❌ Main Caddyfile is missing import directive!');
+        throw new Error('Caddy initialization failed: import directive missing from main Caddyfile');
+      }
+      logger.info('✅ Verified main Caddyfile has import directive');
+
+      // Force reload to ensure active config matches disk
+      await this.reloadCaddy();
+
+      logger.info('✅ Caddy configuration initialized');
     } catch (error) {
       logger.error('Failed to initialize Caddy config', error);
       throw new AppError('Caddy initialization failed', 500);
@@ -60,62 +73,13 @@ export class CaddyConfigManager {
    */
   private async updateMainCaddyfile(): Promise<void> {
     try {
-      // Read all project config files with retry logic
-      let files: string[] = [];
-      let attempts = 0;
-      const maxAttempts = 3;
-      
-      while (attempts < maxAttempts) {
-        try {
-          // Ensure directory exists first
-          await fs.ensureDir(SITES_DIR);
-          
-          // Read directory contents
-          files = await fs.readdir(SITES_DIR);
-          
-          // Success - break out of retry loop
-          break;
-        } catch (error: any) {
-          attempts++;
-          logger.warn(`Failed to read sites directory (attempt ${attempts}/${maxAttempts})`, {
-            error: error.message,
-            code: error.code
-          });
-          
-          if (attempts >= maxAttempts) {
-            // After max attempts, throw error instead of silently failing
-            logger.error('Failed to read sites directory after retries - aborting Caddyfile update to prevent config corruption');
-            throw new AppError(
-              `Cannot read Caddy sites directory after ${maxAttempts} attempts: ${error.message}`,
-              500
-            );
-          }
-          
-          // Wait before retry (exponential backoff: 100ms, 200ms, 400ms)
-          await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, attempts - 1)));
-        }
-      }
-      
-      const projectHandlers: string[] = [];
-      
-      for (const file of files.filter(f => f.endsWith('.caddy'))) {
-        try {
-          const content = await fs.readFile(path.join(SITES_DIR, file), 'utf-8');
-          // Each project config is already properly formatted
-          projectHandlers.push(content.trim());
-        } catch (error: any) {
-          // Log error but continue with other files
-          logger.error(`Failed to read project config file ${file}`, {
-            error: error.message,
-            code: error.code
-          });
-          // Don't add this file to the config, but continue processing others
-        }
-      }
-
-      const projectSection = projectHandlers.length > 0 
-        ? '\n  # Deployed projects\n  ' + projectHandlers.join('\n  \n  ')
-        : '';
+      /* 
+         Previous implementation manually read files and inlined them.
+         This proved unreliable in some environments (fs.readdir returning empty).
+         Switching to native Caddy import directive which handles globs robustly.
+         Using absolute path to be safe.
+      */
+      const projectSection = `\n  # Deployed projects - Import all site configs\n  import ${SITES_DIR}/*.caddy`;
 
       const mainConfig = `{
   admin localhost:2019
@@ -286,49 +250,90 @@ ${domain} {
   /**
    * Reload Caddy configuration
    */
+
   private async reloadCaddy(): Promise<void> {
     try {
+      // Self-healing: Check if import directive is missing and regenerate if needed
+      const caddyfileContent = await fs.readFile(CADDYFILE_PATH, 'utf8');
+      if (!caddyfileContent.includes('import')) {
+        logger.warn('⚠️ Main Caddyfile missing import directive, regenerating...');
+        await this.updateMainCaddyfile();
+      }
+
       // Validate first
       const isValid = await this.validateConfig();
       if (!isValid) {
         throw new Error('Caddy config validation failed');
       }
 
-      // Use Caddy's admin API for graceful reload (keeps WebSocket connections alive)
-      // This is much better than systemctl restart or --force flag
+      // Tier 1: Caddy Admin API (Preferred - Graceful, keeps connections)
       try {
-        const { stdout, stderr } = await execAsync(
-          `curl -X POST http://localhost:2019/load -H "Content-Type: application/json" -d @${CADDYFILE_PATH}`
-        );
+        // Use correct Content-Type (text/caddyfile) and --data-binary to preserve formatting
+        // -s: Silent (no progress)
+        // -w: Write HTTP code at end
+        // -X POST: Explicit method
+        const curlCommand = `curl -s -w "\\nHTTP_CODE:%{http_code}" -X POST "http://localhost:2019/load" -H "Content-Type: text/caddyfile" --data-binary @${CADDYFILE_PATH}`;
         
-        if (stderr) {
-          logger.warn('Caddy API reload stderr:', stderr);
+        const { stdout, stderr } = await execAsync(curlCommand);
+        
+        // Parse response - format is: <response body>\nHTTP_CODE:<code>
+        const lines = stdout.trim().split('\n');
+        const lastLine = lines[lines.length - 1];
+        const httpCodeMatch = lastLine.match(/HTTP_CODE:(\d+)/);
+        const httpCode = httpCodeMatch ? httpCodeMatch[1] : null;
+        const responseBody = lines.slice(0, -1).join('\n'); // Everything else is body
+        
+        if (httpCode === '200') {
+          logger.info('✅ Caddy reloaded gracefully via API');
+          return; // Success - exit early
+        } else {
+          // API call failed logically
+          logger.warn(`Caddy API returned HTTP ${httpCode}`, {
+            responseBody: responseBody.substring(0, 200), // Log partial body
+            stderr: stderr
+          });
+          throw new Error(`Caddy API returned ${httpCode}`);
         }
-        
-        if (stdout) {
-          logger.debug('Caddy API reload stdout:', stdout);
-        }
-        
-        logger.info('✅ Caddy configuration reloaded gracefully via API');
       } catch (apiError: any) {
-        // Fallback to CLI reload if API fails
-        logger.warn('Caddy API reload failed, falling back to CLI reload', apiError.message);
+        // Tier 2: Systemctl Reload (Graceful, Service-Aware)
+        logger.warn('Caddy API reload failed, falling back to systemctl reload', {
+          error: apiError.message
+        });
         
-        const { stdout, stderr } = await execAsync(
-          `sudo caddy reload --config ${CADDYFILE_PATH} --adapter caddyfile`
-        );
-        
-        if (stderr && !stderr.includes('using provided configuration')) {
-          logger.warn('Caddy CLI reload stderr:', stderr);
+        try {
+          const { stdout, stderr } = await execAsync('sudo systemctl reload caddy');
+          
+          if (stderr) logger.warn('Systemctl reload stderr:', stderr);
+          if (stdout) logger.debug('Systemctl reload stdout:', stdout);
+          
+          logger.info('✅ Caddy configuration reloaded via systemctl');
+          return; // Success
+        } catch (systemctlError: any) {
+          // Tier 3: Caddy CLI (Last Resort - Might restart process)
+          logger.warn('Systemctl reload failed, trying caddy reload command', {
+            error: systemctlError.message
+          });
+          
+          // Use --config to be explicit, but strictly we prefer systemctl
+          const { stdout, stderr } = await execAsync(
+            `sudo caddy reload --config ${CADDYFILE_PATH}`
+          );
+          
+          if (stderr && !stderr.includes('using provided configuration')) {
+            logger.warn('Caddy CLI reload stderr:', stderr);
+          }
+          
+          logger.info('✅ Caddy configuration reloaded via CLI');
         }
-        
-        logger.info('✅ Caddy configuration reloaded via CLI');
       }
     } catch (error: any) {
-      logger.error('Failed to reload Caddy - Command error:', error.message);
-      logger.error('Failed to reload Caddy - stderr:', error.stderr);
-      logger.error('Failed to reload Caddy - stdout:', error.stdout);
-      logger.error('Failed to reload Caddy - code:', error.code);
+      logger.error('Failed to reload Caddy - all methods exhausted', {
+        message: error.message,
+        stderr: error.stderr,
+        stdout: error.stdout,
+        code: error.code
+      });
+      // We throw here because deploy/start operations essentially failed if proxy isn't updated
       throw new AppError('Failed to reload Caddy', 500);
     }
   }
@@ -398,4 +403,4 @@ ${domain} {
   }
 }
 
-export const caddyConfigManager = new CaddyConfigManager();
+export const caddyConfigManager = new CaddyConfigManager(); 

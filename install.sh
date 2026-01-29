@@ -376,8 +376,11 @@ cat > "$CADDY_DATA_DIR/Caddyfile" << 'EOF'
       }
     }
   }
-  
-  # Frontend SPA
+
+  # Deployed projects - Import all site configs
+  import /opt/pdcp/data/caddy/sites/*.caddy
+
+  # Frontend SPA (fallback - must be last)
   handle {
     root * /opt/pdcp/ui/dist
     try_files {path} /index.html
