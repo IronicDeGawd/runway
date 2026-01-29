@@ -205,7 +205,7 @@ function setupRealtimeWebSocket(wss: WebSocketServer) {
 
         // Handle deployment request
         if (data.action === 'deploy' && data.payload) {
-          const { fileData, name, type, deploymentId } = data.payload;
+          const { fileData, name, type, deploymentId, mode } = data.payload;
           if (!fileData || !name || !type) {
             ws.send(JSON.stringify({ 
               type: 'deploy:error', 
@@ -216,7 +216,7 @@ function setupRealtimeWebSocket(wss: WebSocketServer) {
 
           // Import deployment service dynamically to avoid circular deps
           const { handleWebSocketDeployment } = await import('./services/deploymentService');
-          await handleWebSocketDeployment(ws, fileData, name, type, deploymentId);
+          await handleWebSocketDeployment(ws, fileData, name, type, deploymentId, mode);
         }
       } catch (err) {
         logger.warn('Invalid WebSocket message received', err);

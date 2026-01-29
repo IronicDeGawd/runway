@@ -1,7 +1,7 @@
 import * as React from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
-import { 
+import {
   Server,
   ArrowLeft,
   Filter,
@@ -12,11 +12,13 @@ import { useSystemMetrics } from "@/hooks/useSystemMetrics";
 import { useProjects } from "@/hooks/useProjects";
 import { useActivity, formatTimeAgo } from "@/hooks/useActivity";
 import { cn } from "@/lib/utils";
+import { useServices } from "@/hooks/useServices";
 
 export default function OverviewPage() {
   const { metrics, history, isLoading: metricsLoading } = useSystemMetrics();
   const { projects, isLoading: projectsLoading, startProject, stopProject, restartProject } = useProjects();
   const { activity, isLoading: activityLoading } = useActivity();
+  const { services } = useServices();
 
   const runningProjects = projects.filter((p) => p.status === "running").length;
   const stoppedProjects = projects.filter((p) => p.status === "stopped").length;
@@ -49,7 +51,7 @@ export default function OverviewPage() {
         {/* Stats Cards Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Card 1: System Health */}
-          <motion.div 
+          <motion.div
             className="bg-surface-elevated rounded-card p-card border border-zinc-800"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -113,7 +115,7 @@ export default function OverviewPage() {
           </motion.div>
 
           {/* Card 2: Resource Overview */}
-          <motion.div 
+          <motion.div
             className="bg-surface-elevated rounded-card p-8 border border-zinc-800 relative"
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
@@ -140,13 +142,13 @@ export default function OverviewPage() {
                 <p className="text-xs text-zinc-400">CPU</p>
                 <p className="text-zinc-400 mt-1">{metricsLoading ? '--' : metrics.cpu}%</p>
               </div>
-              <motion.div 
+              <motion.div
                 className="flex-1 h-40 bg-neon rounded-inner p-4 flex flex-col justify-end transform -translate-y-2 cursor-pointer"
                 whileHover={{ scale: 1.02 }}
               >
                 <p className="text-xs text-primary-foreground/60 font-bold">Memory</p>
                 <p className="text-primary-foreground font-bold mt-1">
-                  {metricsLoading ? '--' : `${(metrics.usedMemory / (1024**3)).toFixed(1)}GB`}
+                  {metricsLoading ? '--' : `${(metrics.usedMemory / (1024 ** 3)).toFixed(1)}GB`}
                 </p>
               </motion.div>
               <div className="flex-1 h-32 bg-surface-muted rounded-inner p-4 flex flex-col justify-end border border-zinc-800 cursor-pointer hover:border-zinc-600 transition-colors">
@@ -158,7 +160,7 @@ export default function OverviewPage() {
         </div>
 
         {/* Unified Two Column Layout - White Panel */}
-        <motion.div 
+        <motion.div
           className="bg-panel rounded-panel p-2 flex flex-col md:flex-row min-h-[400px]"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -181,23 +183,29 @@ export default function OverviewPage() {
                 <span className="text-xl font-light text-zinc-900">{buildingProjects}</span>
               </div>
             </div>
-            
+
             {/* Services Section */}
             <div className="mt-4 pt-4 border-t border-zinc-200">
               <h3 className="text-sm font-medium text-zinc-500 mb-3">Services</h3>
               <div className="space-y-2">
-                {projects.filter(p => p.status === 'running').slice(0, 3).map((project) => (
-                  <div key={project.id} className="flex items-center justify-between py-2 px-3 rounded-element bg-zinc-50 border border-zinc-200">
+                {services.map((service) => (
+                  <div key={service.id} className="flex items-center justify-between py-2 px-3 rounded-element bg-zinc-50 border border-zinc-200">
                     <div className="flex items-center gap-2">
                       <Server className="w-4 h-4 text-zinc-400" />
-                      <span className="text-sm text-zinc-700">{project.name}</span>
+                      <span className="text-sm text-zinc-700 capitalize">{service.type}</span>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <div className="h-2 w-2 rounded-pill bg-status-running" />
-                      <span className="text-xs text-zinc-500">Running</span>
+                      <div className={cn(
+                        "h-2 w-2 rounded-pill",
+                        service.status === "running" ? "bg-status-running" : "bg-status-stopped"
+                      )} />
+                      <span className="text-xs text-zinc-500 capitalize">{service.status}</span>
                     </div>
                   </div>
                 ))}
+                {services.length === 0 && (
+                  <div className="text-sm text-zinc-400 italic">No services configured</div>
+                )}
               </div>
             </div>
           </div>
@@ -224,8 +232,8 @@ export default function OverviewPage() {
                           <span className={cn(
                             'inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-xs',
                             item.type === 'deploy' || item.type === 'start' ? 'bg-status-running/20 text-status-running' :
-                            item.type === 'stop' ? 'bg-zinc-700 text-zinc-300' :
-                            'bg-status-building/20 text-status-building'
+                              item.type === 'stop' ? 'bg-zinc-700 text-zinc-300' :
+                                'bg-status-building/20 text-status-building'
                           )}>
                             <span className="h-1.5 w-1.5 rounded-pill bg-current" />
                             {item.type}

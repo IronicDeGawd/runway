@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { Upload, Check, ArrowRight, ArrowLeft, RefreshCw, XCircle } from 'lucide-react';
 import { useDeployFlow } from '@/hooks/useDeployFlow';
+import { useProjects } from '@/hooks/useProjects';
 import { RiReactjsFill, RiNextjsFill } from "react-icons/ri";
 import { FaNodeJs } from "react-icons/fa";
 import { getProjectUrl } from '@/utils/url';
@@ -24,6 +25,7 @@ export default function DeployPage() {
   const navigate = useNavigate();
   // Destructure state and handlers from the hook
   const { state, isDeploying, startDeploy, confirmConfig, reset, setStep } = useDeployFlow();
+  const { projects } = useProjects();
 
   // Local state for form inputs
   const [projectName, setProjectName] = useState('');
@@ -58,12 +60,20 @@ export default function DeployPage() {
     setValidationError(null);
     if (state.step === 'upload' && file) {
       // Initialize deployment flow with file and default config
-      startDeploy(file, { runtime: selectedRuntime, name: projectName });
+      startDeploy(file, { runtime: selectedRuntime, name: projectName, mode: 'create' });
     } else if (state.step === 'configure') {
       if (!projectName.trim()) {
         setValidationError('Project name is required');
         return;
       }
+
+      // Check for duplicate name
+      const exists = projects.some(p => p.name.toLowerCase() === projectName.trim().toLowerCase());
+      if (exists) {
+        setValidationError('Project name already exists. Go to Project Details to update.');
+        return;
+      }
+
       // Confirm configuration and start actual build
       await handleConfigureContinue();
     }
@@ -84,9 +94,9 @@ export default function DeployPage() {
   const handleConfigureContinue = async () => {
     if (!file) return;
     // Update config in hook before confirming (optional now, but good for consistency)
-    startDeploy(file, { runtime: selectedRuntime, name: projectName });
+    startDeploy(file, { runtime: selectedRuntime, name: projectName, mode: 'create' });
     // Pass config directly to avoid race condition with state update
-    await confirmConfig({ name: projectName, runtime: selectedRuntime });
+    await confirmConfig({ name: projectName, runtime: selectedRuntime, mode: 'create' });
   };
 
   const canProceed = () => {

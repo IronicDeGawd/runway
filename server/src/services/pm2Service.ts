@@ -4,7 +4,7 @@ import fs from 'fs-extra';
 import { ProjectConfig } from '@pdcp/shared';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
-import { envService } from './envService';
+import { envManager } from './envManager';
 import { activityLogger } from './activityLogger';
 import { projectRegistry } from './projectRegistry';
 import { eventBus } from '../events/eventBus';
@@ -81,7 +81,7 @@ export class PM2Service {
 
   private async generateEcosystemConfig(project: ProjectConfig): Promise<any> {
     const projectDir = path.join(APPS_DIR, project.id);
-    const envVars = await envService.getEnv(project.id);
+    const envVars = await envManager.getEnv(project.id);
     
     // Determine entry point
     let script = 'index.js';

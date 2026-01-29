@@ -35,10 +35,10 @@ export function useDeployFlow() {
     logs: [],
   });
   const [isDeploying, setIsDeploying] = React.useState(false);
-  const [deployConfig, setDeployConfig] = React.useState<{file?: File, name: string, runtime: string} | null>(null);
+  const [deployConfig, setDeployConfig] = React.useState<{file?: File, name: string, runtime: string, mode?: 'create' | 'update'} | null>(null);
   const wsRef = React.useRef<WebSocket | null>(null);
 
-  const startDeploy = React.useCallback((file?: File, config?: { runtime: string; name: string }) => {
+  const startDeploy = React.useCallback((file?: File, config?: { runtime: string; name: string; mode?: 'create' | 'update' }) => {
     console.log('startDeploy called with:', { file: file?.name, config });
     if (!file || !config) {
       console.log('Missing file or config, returning');
@@ -52,7 +52,7 @@ export function useDeployFlow() {
     console.log('State updated to configure step');
   }, []);
 
-  const confirmConfig = React.useCallback(async (configOverride?: { file?: File, name?: string, runtime?: string }) => {
+  const confirmConfig = React.useCallback(async (configOverride?: { file?: File, name?: string, runtime?: string, mode?: 'create' | 'update' }) => {
     const finalConfig = { ...deployConfig, ...configOverride };
     
     if (!finalConfig || !finalConfig.file || !finalConfig.name || !finalConfig.runtime) {
@@ -92,7 +92,8 @@ export function useDeployFlow() {
             fileData,
             name: finalConfig.name,
             type: finalConfig.runtime,
-            deploymentId
+            deploymentId,
+            mode: finalConfig.mode
           }
         }));
       };

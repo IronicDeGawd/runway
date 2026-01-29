@@ -8,8 +8,8 @@ build
 # Deployment scripts with credentials
 deploy.sh
 deploy-ui.sh
-./test-projects
-./test-projects/*
+test-projects
+test-projects/*
 
 # Plan and documentation files
 doc/*.md

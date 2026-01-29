@@ -3,12 +3,11 @@ import { z } from 'zod';
 import { ProjectConfig } from '@pdcp/shared';
 import { requireAuth } from '../middleware/auth';
 import { validateRequest } from '../middleware/validateRequest';
-import { pm2Service } from '../services/pm2Service';
+import { processManager } from '../services/processManager';
 import { projectRegistry } from '../services/projectRegistry';
 import { portManager } from '../services/portManager';
 import { caddyConfigManager } from '../services/caddyConfigManager';
 import { AppError } from '../middleware/errorHandler';
-import { deploymentService } from '../services/deploymentService';
 import { logger } from '../utils/logger';
 import { eventBus } from '../events/eventBus';
 import fs from 'fs-extra';
@@ -25,7 +24,7 @@ const getProject = async (id: string): Promise<ProjectConfig> => {
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const processes = await pm2Service.getProcesses();
+    const processes = await processManager.getProcesses();
     res.json({ success: true, data: processes });
   } catch (error) {
     next(error);
@@ -35,7 +34,7 @@ router.get('/', requireAuth, async (req, res, next) => {
 router.post('/:id/start', requireAuth, async (req, res, next) => {
   try {
     const project = await getProject(req.params.id);
-    await pm2Service.startProject(project);
+    await processManager.startProject(project);
     res.json({ success: true, message: 'Process started' });
   } catch (error) {
     next(error);
@@ -44,8 +43,8 @@ router.post('/:id/start', requireAuth, async (req, res, next) => {
 
 router.post('/:id/stop', requireAuth, async (req, res, next) => {
   try {
-    await getProject(req.params.id); // verify existence
-    await pm2Service.stopProject(req.params.id);
+    const project = await getProject(req.params.id);
+    await processManager.stopProject(project);
     res.json({ success: true, message: 'Process stopped' });
   } catch (error) {
     next(error);
@@ -54,8 +53,8 @@ router.post('/:id/stop', requireAuth, async (req, res, next) => {
 
 router.post('/:id/restart', requireAuth, async (req, res, next) => {
   try {
-    await getProject(req.params.id);
-    await pm2Service.restartProject(req.params.id);
+    const project = await getProject(req.params.id);
+    await processManager.restartProject(project);
     res.json({ success: true, message: 'Process restarted' });
   } catch (error) {
     next(error);
@@ -67,10 +66,8 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
     const id = req.params.id;
     const project = await getProject(id);
     
-    // Stop process (if not React static site)
-    if (project.type !== 'react') {
-      await pm2Service.deleteProject(id);
-    }
+    // Stop process (generic)
+    await processManager.deleteProject(project);
     
     // Release port
     await portManager.releasePort(project.port);

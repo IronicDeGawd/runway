@@ -13,8 +13,10 @@ import {
   ArrowLeft,
   Filter,
   FilePlus,
+  UploadCloud,
 } from "lucide-react";
 import { getProjectUrl } from '@/utils/url';
+import { UpdateProjectModal } from "@/components/UpdateProjectModal";
 
 export default function ProjectsPage() {
   const navigate = useNavigate();
@@ -23,6 +25,7 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "stopped" | "building">("all");
   const [selectedId, setSelectedId] = useState<string | null>(projects[0]?.id || null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
 
   const filteredProjects = projects.filter((project) => {
     const matchesSearch =
@@ -264,6 +267,13 @@ export default function ProjectsPage() {
 
                     {/* Action Bar */}
                     <div className="flex justify-end items-center space-x-4">
+                      <button
+                        onClick={() => setIsUpdateModalOpen(true)}
+                        className="p-3 rounded-pill border border-zinc-700 hover:bg-zinc-800 text-zinc-400 font-medium transition-colors"
+                        title="Update Source"
+                      >
+                        <UploadCloud className="w-5 h-5" />
+                      </button>
                       {selectedProject.status === "running" ? (
                         <button
                           onClick={() => stopProject(selectedProject.id)}
@@ -344,6 +354,15 @@ export default function ProjectsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Update Project Modal */}
+      {selectedProject && (
+        <UpdateProjectModal
+          isOpen={isUpdateModalOpen}
+          onClose={() => setIsUpdateModalOpen(false)}
+          project={selectedProject}
+        />
       )}
     </DashboardLayout>
   );

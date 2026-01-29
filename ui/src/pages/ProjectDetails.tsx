@@ -11,12 +11,16 @@ import {
   Activity,
   Settings,
   Terminal as TerminalIcon,
+  UploadCloud,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { UpdateProjectModal } from "@/components/UpdateProjectModal";
 import { useProjects } from "@/hooks/useProjects";
 import { useActivity, formatTimeAgo } from "@/hooks/useActivity";
+import { useProjectEnv } from "@/hooks/useProjectEnv";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { Plus } from "lucide-react";
 
 export default function ProjectDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -25,9 +29,20 @@ export default function ProjectDetailsPage() {
   const { activity } = useActivity();
   const [activeTab, setActiveTab] = React.useState("overview");
   const [showDeleteDialog, setShowDeleteDialog] = React.useState(false);
+  const [showUpdateModal, setShowUpdateModal] = React.useState(false);
 
   const project = projects.find((p) => p.id === id);
   const projectActivity = activity.filter((a) => a.project === project?.name).slice(0, 10);
+
+  const { envVars, updateEnv, isLoading: envLoading } = useProjectEnv(project?.id);
+  const [localEnv, setLocalEnv] = React.useState<{ name: string, value: string }[]>([]);
+
+  // Sync env vars to local state when loaded
+  React.useEffect(() => {
+    if (envVars) {
+      setLocalEnv(envVars);
+    }
+  }, [envVars]);
 
   if (!project) {
     return (
@@ -52,6 +67,7 @@ export default function ProjectDetailsPage() {
 
   const tabs = [
     { id: "overview", label: "Overview" },
+    { id: "environment", label: "Environment" },
     { id: "activity", label: "Activity" },
     { id: "settings", label: "Settings" },
   ];
@@ -62,7 +78,7 @@ export default function ProjectDetailsPage() {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            <button 
+            <button
               onClick={() => navigate("/projects")}
               className="p-2 rounded-pill bg-zinc-900 border border-zinc-800 hover:bg-surface-overlay"
             >
@@ -74,8 +90,8 @@ export default function ProjectDetailsPage() {
                 <div className={cn(
                   "flex items-center gap-1.5 px-2.5 py-1 rounded-pill text-xs font-medium",
                   project.status === "running" ? "bg-green-900/30 text-green-400" :
-                  project.status === "stopped" ? "bg-zinc-800 text-zinc-400" :
-                  "bg-yellow-900/30 text-yellow-400"
+                    project.status === "stopped" ? "bg-zinc-800 text-zinc-400" :
+                      "bg-yellow-900/30 text-yellow-400"
                 )}>
                   <span className={cn(
                     "h-1.5 w-1.5 rounded-pill",
@@ -91,6 +107,14 @@ export default function ProjectDetailsPage() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowUpdateModal(true)}
+              className="flex items-center gap-2 px-4 py-3 rounded-pill hover:bg-surface-elevated text-zinc-300 hover:text-white border border-transparent hover:border-zinc-700 transition-all"
+              title="Update Source"
+            >
+              <UploadCloud className="w-5 h-5" />
+              <span className="hidden sm:inline">Update</span>
+            </button>
             {project.status === "running" ? (
               <button
                 onClick={() => stopProject(project.id)}
@@ -252,8 +276,8 @@ export default function ProjectDetailsPage() {
                           <span className={cn(
                             "px-2 py-0.5 rounded-pill text-xs font-medium",
                             item.type === "deploy" || item.type === "start" ? "bg-green-600/20 text-green-400" :
-                            item.type === "stop" ? "bg-zinc-700 text-zinc-300" :
-                            "bg-yellow-600/20 text-yellow-400"
+                              item.type === "stop" ? "bg-zinc-700 text-zinc-300" :
+                                "bg-yellow-600/20 text-yellow-400"
                           )}>
                             {item.type}
                           </span>
@@ -264,6 +288,131 @@ export default function ProjectDetailsPage() {
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          )}
+
+          {activeTab === "environment" && (
+            <div
+              className="bg-surface-elevated rounded-card p-6 border border-zinc-800"
+              onPaste={(e) => {
+                // If the user pastes into an input, we might want to respect that default behavior 
+                // UNLESS it looks like a multi-line generic paste.
+                // However, user said "paste on the page".
+
+                // Let's inspect data.
+                const text = e.clipboardData.getData('text');
+                if (!text || !text.includes('=')) return;
+
+                // Simple heuristic: if it contains newlines and '=', treat as bulk import
+                // Or if it matches KEY=VALUE pattern
+                const lines = text.split(/[\r\n]+/).filter(l => l.trim());
+                if (lines.length === 0) return;
+
+                const parsed: { name: string, value: string }[] = [];
+
+                // Check valid lines
+                for (const line of lines) {
+                  const match = line.match(/^\s*([^=]+)=(.*)$/);
+                  if (match) {
+                    parsed.push({
+                      name: match[1].trim().toUpperCase().replace(/[^A-Z0-9_]/g, ''),
+                      value: match[2].trim()
+                    });
+                  }
+                }
+
+                if (parsed.length > 0) {
+                  e.preventDefault();
+
+                  // Merge strategy: Append? Overwrite duplicates?
+                  // User said "parses and saves to the forms".
+                  // Let's Append or Update existing.
+                  const currentMap = new Map(localEnv.map(i => [i.name, i.value]));
+                  parsed.forEach(p => currentMap.set(p.name, p.value));
+
+                  const merged = Array.from(currentMap.entries()).map(([name, value]) => ({ name, value }));
+                  setLocalEnv(merged);
+                  toast.success(`Imported ${parsed.length} variables from clipboard`);
+                }
+              }}
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-foreground">Environment Variables</h2>
+                  <p className="text-sm text-zinc-400 mt-1">
+                    Manage environment variables for your project. Changes are encrypted at rest.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const newEnv = localEnv.reduce((acc, curr) => ({ ...acc, [curr.name]: curr.value }), {});
+                    updateEnv(newEnv);
+                  }}
+                  disabled={envLoading}
+                  className="px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon/90 font-medium text-sm transition-colors disabled:opacity-50"
+                >
+                  Save Changes
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                {envLoading ? (
+                  <div className="text-zinc-500 text-sm">Loading variables...</div>
+                ) : (
+                  localEnv.map((item, index) => (
+                    <div key={index} className="flex gap-3">
+                      <input
+                        type="text"
+                        placeholder="KEY"
+                        value={item.name}
+                        onChange={(e) => {
+                          const newEnv = [...localEnv];
+                          newEnv[index].name = e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
+                          setLocalEnv(newEnv);
+                        }}
+                        className="flex-1 px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500"
+                      />
+                      <input
+                        type="text"
+                        placeholder="VALUE"
+                        value={item.value}
+                        onChange={(e) => {
+                          const newEnv = [...localEnv];
+                          newEnv[index].value = e.target.value;
+                          setLocalEnv(newEnv);
+                        }}
+                        className="flex-[2] px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500"
+                      />
+                      <button
+                        onClick={() => {
+                          const newEnv = localEnv.filter((_, i) => i !== index);
+                          setLocalEnv(newEnv);
+                        }}
+                        className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-element"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))
+                )}
+
+                <button
+                  onClick={() => setLocalEnv([...localEnv, { name: "", value: "" }])}
+                  className="flex items-center gap-2 text-sm text-neon hover:text-neon-hover font-medium mt-2 px-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  Add Variable
+                </button>
+              </div>
+
+              <div className="mt-6 pt-6 border-t border-zinc-800">
+                <p className="text-xs text-zinc-500">
+                  Note: Values are injected at runtime.
+                  {project.type === 'react'
+                    ? ' For React apps, updates apply instantly on page reload (no rebuild needed).'
+                    : ' For Node/Next.js apps, the process restarts automatically.'}
+                </p>
               </div>
             </div>
           )}
@@ -335,6 +484,13 @@ export default function ProjectDetailsPage() {
           </motion.div>
         </motion.div>
       )}
+
+      {/* Update Modal */}
+      <UpdateProjectModal
+        project={project}
+        isOpen={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+      />
     </DashboardLayout>
   );
 }

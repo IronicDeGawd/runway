@@ -10,7 +10,7 @@ import { portManager } from './portManager';
 import { pm2Service } from './pm2Service';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/errorHandler';
-import { envService } from './envService';
+import { envManager } from './envManager';
 import { activityLogger } from './activityLogger';
 import { eventBus } from '../events/eventBus';
 import { caddyConfigManager } from './caddyConfigManager';
@@ -78,7 +78,7 @@ export class DeploymentService {
       
       if (pkgJson.scripts && pkgJson.scripts.build) {
         logger.info(`Building project in ${dir}`);
-        const envVars = await envService.getEnv(projectId);
+        const envVars = await envManager.getEnv(projectId);
         
         let buildCmd = `${manager} run build`;
         
@@ -145,7 +145,8 @@ export class DeploymentService {
     type: ProjectType,
     options: { 
       onProgress?: (step: string, message: string, percentage: number) => void,
-      deploymentId?: string 
+      deploymentId?: string,
+      mode?: 'create' | 'update'
     } = {}
   ): Promise<ProjectConfig> {
     const deployId = options.deploymentId || uuidv4();
@@ -162,6 +163,17 @@ export class DeploymentService {
     reportProgress('init', `Starting deployment ${deployId}`, 0);
 
     try {
+      // 0. Pre-Verification based on mode
+      const allProjects = await projectRegistry.getAll();
+      const existingProject = allProjects.find(p => p.name === projectName);
+
+      if (options.mode === 'create' && existingProject) {
+        throw new AppError(`Project with name "${projectName}" already exists. Use the project details page to update it.`, 409);
+      }
+
+      if (options.mode === 'update' && !existingProject) {
+        throw new AppError(`Project "${projectName}" not found. Cannot update a non-existent project.`, 404);
+      }
       // 1. Extract zip
       reportProgress('upload', 'Extracting package...', 10);
       await extractZip(filePath, stagingDir);
@@ -264,6 +276,13 @@ export class DeploymentService {
       reportProgress('deploy', 'Configuring reverse proxy...', 90);
       await caddyConfigManager.updateProjectConfig(newConfig);
       logger.info('✅ Caddy config updated');
+
+      // 13. Apply Environment Variables (Runtime Config)
+      // This ensures React apps get env-config.js and PM2 apps get envs
+      // Note: for PM2 apps we already passed envs in startProject via config if we used envManager there?
+      // Actually we need to ensure PM2Service uses EnvManager too.
+      // But for React, we explicitly need to generate the file now.
+      await envManager.applyEnv(projectId);
 
       logger.info(`✅ Deployment successful for ${projectName} (${projectId})`);
       
@@ -404,7 +423,8 @@ export async function handleWebSocketDeployment(
   fileData: string, // base64 encoded zip file
   projectName: string,
   type: ProjectType,
-  deploymentId?: string
+  deploymentId?: string,
+  mode?: 'create' | 'update'
 ): Promise<void> {
   const effectiveDeploymentId = deploymentId || uuidv4();
   
@@ -477,10 +497,9 @@ export async function handleWebSocketDeployment(
     const buffer = Buffer.from(fileData, 'base64');
     await fs.writeFile(tempFilePath, buffer);
     
-    // Unified Deployment Flow
-    // We delegate EVERYTHING to deployProject to avoid double-builds and ensure patching
     const project = await deploymentService.deployProject(tempFilePath, projectName, type, {
       deploymentId: effectiveDeploymentId,
+      mode,
       onProgress: (step: string, message: string, progress: number) => {
         sendProgress(step, message, progress);
       }
