@@ -179,12 +179,21 @@ fi
 if ! command -v rsync &> /dev/null; then
     log_info "Installing rsync..."
     apt-get install -y rsync
-    apt-get install -y build-essential
 
     log_success "rsync installed"
 else
     log_success "rsync already installed"
 fi
+
+# Check for build-essential (make, gcc, g++, etc.)
+if ! dpkg -s build-essential &> /dev/null || ! command -v make &> /dev/null || ! command -v gcc &> /dev/null || ! command -v g++ &> /dev/null; then
+    log_info "Installing build-essential (make, gcc, g++, etc.)..."
+    apt-get install -y build-essential
+    log_success "build-essential installed"
+else
+    log_success "build-essential already installed"
+fi
+
 
 # ============================================================================
 # Optional Docker Installation
