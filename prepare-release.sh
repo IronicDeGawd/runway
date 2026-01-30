@@ -37,7 +37,7 @@ if [ -z "$VERSION" ]; then
 fi
 
 # Validate version format
-if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]] && [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-alpha\.[0-9]+)?$ ]]; then
+if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta)\.[0-9]+)?$ ]]; then
     log_error "Invalid version format. Use: v0.1.0-beta.1"
     exit 1
 fi

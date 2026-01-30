@@ -92,10 +92,10 @@ export async function initCommand(options: InitOptions): Promise<void> {
       { timeout: 10000 }
     );
 
-    if (response.data.success && response.data.data?.token) {
+    if (response.data.success && response.data?.token) {
       // Save configuration
       setServerUrl(serverUrl);
-      setToken(response.data.data.token);
+      setToken(response.data.token);
 
       logger.blank();
       logger.success('Configuration saved successfully!');

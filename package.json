@@ -12,5 +12,8 @@
     "build": "npm run build -w shared && npm run build -w server && npm run build -w ui && npm i @swc/core && npm run build -w cli",
     "build:cli": "npm run build -w shared && npm run build -w cli",
     "test": "npm run test --workspaces --if-present"
+  },
+  "dependencies": {
+    "@swc/core": "^1.15.11"
   }
 }
