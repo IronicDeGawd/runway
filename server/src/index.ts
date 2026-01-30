@@ -5,7 +5,7 @@ import { logger } from './utils/logger';
 import { errorHandler, AppError } from './middleware/errorHandler';
 import { projectRegistry } from './services/projectRegistry';
 import { caddyConfigManager } from './services/caddyConfigManager';
-
+import { database } from './services/database';
 import { authRouter } from './routes/auth';
 import { deploymentRouter } from './routes/deploy';
 import { processRouter } from './routes/process';
@@ -15,6 +15,7 @@ import { metricsRouter } from './routes/metrics';
 import { activityRouter } from './routes/activity';
 import { initWebSocket } from './websocket';
 import { pm2Service } from './services/pm2Service';
+import { startResourceMonitor } from './services/resourceMonitor'
 
 const app = express();
 const httpServer = createServer(app);
@@ -76,7 +77,15 @@ initWebSocket(httpServer);
 
 httpServer.listen(port, async () => {
   logger.info(`Control Plane running on http://localhost:${port}`);
-  
+
+  // Initialize SQLite database
+  try {
+    database.initialize();
+    logger.info('✅ SQLite database initialized');
+  } catch (error) {
+    logger.error('Failed to initialize SQLite database', error);
+  }
+
   // Initialize Caddy configuration structure
   try {
     await caddyConfigManager.initialize();
@@ -92,5 +101,13 @@ httpServer.listen(port, async () => {
     logger.info('✅ PM2 processes reconciled');
   } catch (error) {
     logger.error('Failed to reconcile processes on boot', error);
+  }
+
+  // Start resource monitoring
+  try {
+    await startResourceMonitor();
+    logger.info('✅ Resource monitor started');
+  } catch (error) {
+    logger.error('Failed to start resource monitor', error);
   }
 });

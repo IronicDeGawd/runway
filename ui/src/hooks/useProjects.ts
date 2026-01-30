@@ -138,6 +138,21 @@ export function useProjects() {
         onError: () => toast.error('Failed to delete project'),
     });
 
+    const rebuildMutation = useMutation({
+        mutationFn: async (id: string) => {
+            await api.post(`/project/${id}/rebuild`);
+        },
+        onSuccess: () => {
+            toast.success('Rebuild started');
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+            queryClient.invalidateQueries({ queryKey: ['processes'] });
+        },
+        onError: (error: any) => {
+            const errorMsg = error.response?.data?.error || 'Rebuild failed';
+            toast.error(errorMsg);
+        },
+    });
+
     return {
         projects,
         isLoading: projectsLoading,
@@ -145,6 +160,7 @@ export function useProjects() {
         stopProject: (id: string) => stopMutation.mutateAsync(id),
         restartProject: (id: string) => restartMutation.mutateAsync(id),
         deleteProject: (id: string) => deleteMutation.mutateAsync(id),
+        rebuildProject: (id: string) => rebuildMutation.mutateAsync(id),
         getProject,
     };
 }

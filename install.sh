@@ -179,6 +179,8 @@ fi
 if ! command -v rsync &> /dev/null; then
     log_info "Installing rsync..."
     apt-get install -y rsync
+    apt-get install -y build-essential
+
     log_success "rsync installed"
 else
     log_success "rsync already installed"
@@ -602,10 +604,10 @@ if command -v ufw &> /dev/null; then
 
     # Check if UFW is active
     if ! ufw status 2>/dev/null | grep -q "Status: active"; then
-        # Allow SSH first to prevent lockout
-        if ! ufw --force allow 22/tcp > /dev/null 2>&1; then
-            UFW_SUCCESS=false
-        fi
+        # # Allow SSH first to prevent lockout
+        # if ! ufw --force allow 22/tcp > /dev/null 2>&1; then
+        #     UFW_SUCCESS=false
+        # fi
 
         # Enable UFW (this is what commonly fails on some cloud instances)
         if ! ufw --force enable > /dev/null 2>&1; then
@@ -627,7 +629,7 @@ if command -v ufw &> /dev/null; then
     else
         log_warning "UFW configuration failed - firewall not enabled"
         log_info "You can manually configure UFW later with:"
-        echo -e "  ${BLUE}sudo ufw allow 22/tcp${NC}"
+        # echo -e "  ${BLUE}sudo ufw allow 22/tcp${NC}"
         echo -e "  ${BLUE}sudo ufw allow 80/tcp${NC}"
         echo -e "  ${BLUE}sudo ufw allow 443/tcp${NC}"
         echo -e "  ${BLUE}sudo ufw --force enable${NC}"

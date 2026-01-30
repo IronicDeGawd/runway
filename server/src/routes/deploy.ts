@@ -1,13 +1,17 @@
 import { Router } from 'express';
 import multer from 'multer';
+import path from 'path';
+import fs from 'fs-extra';
 import { z } from 'zod';
 import { validateRequest } from '../middleware/validateRequest';
 import { requireAuth } from '../middleware/auth';
 import { deploymentService } from '../services/deploymentService';
 import { projectRegistry } from '../services/projectRegistry';
 import { caddyConfigManager } from '../services/caddyConfigManager';
+import { DeployAnalyzer } from '../services/deployAnalyzer';
 import { AppError } from '../middleware/errorHandler';
 import { ProjectType } from '@runway/shared';
+import { extractZip } from '../services/zipService';
 
 const router = Router();
 const upload = multer({ dest: '../temp_uploads/' });
@@ -42,30 +46,134 @@ router.get('/status/:id', requireAuth, (req, res, next) => {
   res.json({ success: true, data: status });
 });
 
+// Analyze package before deployment
+router.post('/analyze', requireAuth, upload.single('file'), async (req, res, next) => {
+  if (!req.file) {
+    return next(new AppError('No file uploaded', 400));
+  }
+
+  const tempDir = path.join('../temp_uploads/', `analyze_${Date.now()}`);
+
+  try {
+    // Extract zip to temp directory
+    await extractZip(req.file.path, tempDir);
+
+    // Run analysis
+    const analysis = await DeployAnalyzer.analyze(tempDir, {
+      declaredType: req.body.type as ProjectType | undefined,
+    });
+
+    res.json({ success: true, data: analysis });
+  } catch (error) {
+    next(error);
+  } finally {
+    // Cleanup
+    await fs.remove(tempDir).catch(() => {});
+    await fs.remove(req.file.path).catch(() => {});
+  }
+});
+
+// Rebuild an existing project
+router.post('/:id/rebuild', requireAuth, async (req, res, next) => {
+  try {
+    const project = await projectRegistry.getById(req.params.id);
+    if (!project) {
+      return next(new AppError('Project not found', 404));
+    }
+
+    // Check if project type supports rebuild
+    if (project.type === 'static') {
+      return next(new AppError('Static projects cannot be rebuilt', 400));
+    }
+
+    const updatedProject = await deploymentService.rebuildProject(project.id);
+    res.json({ success: true, data: updatedProject });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/deploy', requireAuth, upload.single('file'), async (req, res, next) => {
   if (!req.file) {
     return next(new AppError('No file uploaded', 400));
   }
 
-  const { name, type } = req.body;
+  const { name, type, buildMode, confirmServerBuild, forceBuild, domains } = req.body;
 
   if (!name || !type) {
     return next(new AppError('Missing name or type', 400));
   }
 
   // Validate type
-  const validTypes: ProjectType[] = ['react', 'next', 'node'];
+  const validTypes: ProjectType[] = ['react', 'next', 'node', 'static'];
   if (!validTypes.includes(type)) {
     return next(new AppError('Invalid project type', 400));
+  }
+
+  // Parse boolean values from form data
+  const confirm = confirmServerBuild === 'true' || confirmServerBuild === true;
+  const force = forceBuild === 'true' || forceBuild === true;
+
+  // Parse domains if provided
+  let parsedDomains: string[] | undefined;
+  if (domains) {
+    try {
+      parsedDomains = typeof domains === 'string' ? JSON.parse(domains) : domains;
+    } catch {
+      parsedDomains = undefined;
+    }
   }
 
   try {
     const project = await deploymentService.deployProject(
       req.file.path,
       name,
-      type as ProjectType
+      type as ProjectType,
+      {
+        buildMode: buildMode || 'server',
+        confirmServerBuild: confirm,
+        forceBuild: force,
+        domains: parsedDomains,
+      }
     );
     res.json({ success: true, data: project });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Deploy pre-built artifacts (from CLI local build)
+router.post('/deploy-prebuilt', requireAuth, upload.single('file'), async (req, res, next) => {
+  if (!req.file) {
+    return next(new AppError('No file uploaded', 400));
+  }
+
+  const { name, type, version } = req.body;
+
+  if (!name || !type) {
+    return next(new AppError('Missing name or type', 400));
+  }
+
+  // Validate type
+  const validTypes: ProjectType[] = ['react', 'next', 'node', 'static'];
+  if (!validTypes.includes(type)) {
+    return next(new AppError('Invalid project type', 400));
+  }
+
+  try {
+    const project = await deploymentService.deployPrebuiltProject(
+      req.file.path,
+      name,
+      type as ProjectType,
+      version
+    );
+    res.json({
+      success: true,
+      data: {
+        projectId: project.id,
+        project
+      }
+    });
   } catch (error) {
     next(error);
   }

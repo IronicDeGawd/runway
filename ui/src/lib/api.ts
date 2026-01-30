@@ -55,3 +55,49 @@ export interface ProcessStatus {
     cpu: number;
     memory: number;
 }
+
+// Deploy Analysis Types
+export interface DeployWarning {
+  level: 'info' | 'warning' | 'critical';
+  message: string;
+  code: string;
+}
+
+export interface DeployAnalysis {
+  detectedType: 'react' | 'next' | 'node' | 'static';
+  hasPackageJson: boolean;
+  hasBuildOutput: boolean;
+  buildOutputDir: string | null;
+  requiresBuild: boolean;
+  isStaticSite: boolean;
+  isNextStaticExport: boolean;
+  isPrebuiltProject: boolean;
+  strategy: 'static' | 'build-and-serve' | 'serve-prebuilt';
+  serveMethod: 'caddy-static' | 'pm2-proxy';
+  warnings: DeployWarning[];
+  requiresConfirmation: boolean;
+  confirmationReason?: string;
+}
+
+// Analyze project before deployment
+export async function analyzeProject(
+  file: File,
+  declaredType?: string
+): Promise<DeployAnalysis> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (declaredType) {
+    formData.append('type', declaredType);
+  }
+
+  const response = await api.post<{ success: boolean; data: DeployAnalysis }>(
+    '/project/analyze',
+    formData,
+    {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 60000, // 1 minute for analysis
+    }
+  );
+
+  return response.data.data;
+}

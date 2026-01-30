@@ -122,12 +122,23 @@ export class EnvManager {
 
     const env = await this.getEnv(projectId);
 
-    if (project.type === 'react') {
-      // For React, rebuild with new environment variables
+    // Skip if no env vars to apply
+    if (Object.keys(env).length === 0) {
+      logger.info(`No environment variables to apply for ${project.name}`);
+      return;
+    }
+
+    if (project.type === 'react' || project.type === 'static') {
+      // For React/Static, rebuild with new environment variables
       // This ensures import.meta.env.VITE_* gets the correct values at build time
-      logger.info(`Rebuilding React project ${project.name} with new environment variables...`);
-      await this.rebuildReactProject(project, env);
-      logger.info(`✅ React project ${project.name} rebuilt successfully with new environment variables`);
+      // Note: Static sites don't need rebuild, but React apps do
+      if (project.type === 'react') {
+        logger.info(`Rebuilding React project ${project.name} with new environment variables...`);
+        await this.rebuildReactProject(project, env);
+        logger.info(`✅ React project ${project.name} rebuilt successfully with new environment variables`);
+      } else {
+        logger.info(`Static site ${project.name} - no rebuild needed`);
+      }
     } else {
       // For Node/Next, we must restart the process to inject new envs
       // PM2 service uses envService.getEnv() (which we need to swap) or we pass it explicit

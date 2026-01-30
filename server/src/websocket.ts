@@ -19,6 +19,12 @@ let metricsInterval: NodeJS.Timeout | null = null;
 let diskUsageCache: { value: number; timestamp: number } | null = null;
 const DISK_CACHE_TTL = 900000; // Cache disk usage for 15 minutes (15 * 60 * 1000)
 
+// PM2 bus reference for cleanup
+let pm2Bus: any = null;
+
+// Event listener cleanup function
+let eventBroadcastingCleanup: (() => void) | null = null;
+
 export const initWebSocket = (server: HttpServer) => {
   logger.info('🔌 Initializing WebSocket servers...');
   
@@ -105,14 +111,27 @@ function setupLogsWebSocket(wss: WebSocketServer) {
     });
   }, 30000);
 
-  wss.on('close', () => clearInterval(interval));
+  wss.on('close', () => {
+    clearInterval(interval);
+    // Clean up PM2 bus listeners to prevent file descriptor leak
+    if (pm2Bus) {
+      logger.info('Cleaning up PM2 bus listeners');
+      pm2Bus.removeAllListeners('log:out');
+      pm2Bus.removeAllListeners('log:err');
+      pm2Bus = null;
+    }
+  });
 
-  // PM2 Bus
+  // PM2 Bus - store reference for cleanup
   pm2.launchBus((err: any, bus: any) => {
     if (err) {
       logger.error('Failed to launch PM2 bus', err);
       return;
     }
+
+    // Store bus reference globally for cleanup
+    pm2Bus = bus;
+    logger.info('PM2 bus connected');
 
     bus.on('log:out', (packet: any) => {
       broadcastLog(wss, 'stdout', packet);
@@ -244,38 +263,56 @@ function setupRealtimeWebSocket(wss: WebSocketServer) {
   wss.on('close', () => {
     clearInterval(interval);
     stopMetricsBroadcast();
+    // Clean up event bus listeners to prevent memory leak
+    if (eventBroadcastingCleanup) {
+      eventBroadcastingCleanup();
+      eventBroadcastingCleanup = null;
+    }
   });
 
-  // Subscribe to event bus and broadcast to clients
-  setupEventBroadcasting(wss);
+  // Subscribe to event bus and broadcast to clients - store cleanup function
+  eventBroadcastingCleanup = setupEventBroadcasting(wss);
 }
 
-// Event Broadcasting
-function setupEventBroadcasting(wss: WebSocketServer) {
-  // Process changes
-  eventBus.onEvent('process:change', (payload) => {
+// Event Broadcasting - returns cleanup function to prevent listener accumulation
+function setupEventBroadcasting(wss: WebSocketServer): () => void {
+  // Store listener references for cleanup
+  const processChangeListener = (payload: EventPayloadMap['process:change']) => {
     broadcastToChannel(wss, 'processes', 'process:change', payload);
-  });
+  };
 
-  // Activity updates
-  eventBus.onEvent('activity:new', (payload) => {
+  const activityNewListener = (payload: EventPayloadMap['activity:new']) => {
     broadcastToChannel(wss, 'activity', 'activity:new', payload);
-  });
+  };
 
-  // Service changes
-  eventBus.onEvent('service:change', (payload) => {
+  const serviceChangeListener = (payload: EventPayloadMap['service:change']) => {
     broadcastToChannel(wss, 'services', 'service:change', payload);
-  });
+  };
 
-  // Project changes
-  eventBus.onEvent('project:change', (payload) => {
+  const projectChangeListener = (payload: EventPayloadMap['project:change']) => {
     broadcastToChannel(wss, 'projects', 'project:change', payload);
-  });
+  };
 
-  // Metrics updates (from event bus)
-  eventBus.onEvent('metrics:update', (payload) => {
+  const metricsUpdateListener = (payload: EventPayloadMap['metrics:update']) => {
     broadcastToChannel(wss, 'metrics', 'metrics:update', payload);
-  });
+  };
+
+  // Register listeners
+  eventBus.onEvent('process:change', processChangeListener);
+  eventBus.onEvent('activity:new', activityNewListener);
+  eventBus.onEvent('service:change', serviceChangeListener);
+  eventBus.onEvent('project:change', projectChangeListener);
+  eventBus.onEvent('metrics:update', metricsUpdateListener);
+
+  // Return cleanup function
+  return () => {
+    logger.info('Cleaning up event bus listeners');
+    eventBus.offEvent('process:change', processChangeListener);
+    eventBus.offEvent('activity:new', activityNewListener);
+    eventBus.offEvent('service:change', serviceChangeListener);
+    eventBus.offEvent('project:change', projectChangeListener);
+    eventBus.offEvent('metrics:update', metricsUpdateListener);
+  };
 }
 
 // Broadcast to specific channel
