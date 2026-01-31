@@ -13,6 +13,8 @@ const APPS_DIR = path.resolve(process.cwd(), '../apps');
 const CADDY_DATA_DIR = '/opt/runway/data/caddy';
 const CADDYFILE_PATH = path.join(CADDY_DATA_DIR, 'Caddyfile');
 const SITES_DIR = path.join(CADDY_DATA_DIR, 'sites');
+const SYSTEM_CADDY_PATH = path.join(CADDY_DATA_DIR, 'system.caddy');
+const API_PORT = process.env.PORT || 3000;
 
 export class CaddyConfigManager {
   /**
@@ -423,6 +425,194 @@ ${domain} {
     const ip = serverIp || 'localhost';
     const projectPath = `/app/${project.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
     return `http://${ip}${projectPath}`;
+  }
+
+  /**
+   * Update system domain configuration for the control panel
+   * Generates system.caddy with HTTPS configuration for the domain
+   */
+  async updateSystemConfig(domain: string): Promise<void> {
+    try {
+      logger.info(`Configuring system domain: ${domain}`);
+
+      const systemConfig = this.generateSystemCaddyfile(domain);
+      await fs.writeFile(SYSTEM_CADDY_PATH, systemConfig);
+      logger.info(`System Caddy config written to ${SYSTEM_CADDY_PATH}`);
+
+      // Update main Caddyfile to include system config
+      await this.updateMainCaddyfileWithSystem(domain);
+      await this.reloadCaddy();
+
+      logger.info(`✅ System domain ${domain} configured with HTTPS`);
+    } catch (error) {
+      logger.error(`Failed to configure system domain ${domain}`, error);
+      throw new AppError('Failed to configure system domain', 500);
+    }
+  }
+
+  /**
+   * Remove system domain configuration
+   */
+  async removeSystemConfig(): Promise<void> {
+    try {
+      if (await fs.pathExists(SYSTEM_CADDY_PATH)) {
+        await fs.remove(SYSTEM_CADDY_PATH);
+        logger.info('Removed system Caddy config');
+      }
+
+      // Regenerate main Caddyfile without system import
+      await this.updateMainCaddyfile();
+      await this.reloadCaddy();
+
+      logger.info('✅ System domain configuration removed');
+    } catch (error) {
+      logger.error('Failed to remove system domain config', error);
+      throw new AppError('Failed to remove system domain config', 500);
+    }
+  }
+
+  /**
+   * Generate Caddyfile content for the system domain (control panel)
+   */
+  private generateSystemCaddyfile(domain: string): string {
+    return `# System Control Panel - ${domain}
+# Auto-generated - Do not edit manually
+
+${domain} {
+  # WebSocket support for realtime updates
+  @websocket_realtime {
+    path /api/realtime*
+  }
+  handle @websocket_realtime {
+    reverse_proxy 127.0.0.1:${API_PORT} {
+      header_up Upgrade {http.request.header.Upgrade}
+      header_up Connection {http.request.header.Connection}
+      header_up Host {http.request.header.Host}
+      header_up X-Real-IP {http.request.header.X-Real-IP}
+      header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+      header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+    }
+  }
+
+  # WebSocket support for project logs
+  @websocket_logs {
+    path /api/logs/*
+  }
+  handle @websocket_logs {
+    reverse_proxy 127.0.0.1:${API_PORT} {
+      header_up Upgrade {http.request.header.Upgrade}
+      header_up Connection {http.request.header.Connection}
+      header_up Host {http.request.header.Host}
+      header_up X-Real-IP {http.request.header.X-Real-IP}
+      header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+      header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+    }
+  }
+
+  # API requests
+  handle /api/* {
+    reverse_proxy 127.0.0.1:${API_PORT} {
+      transport http {
+        read_timeout 5m
+        write_timeout 5m
+      }
+    }
+  }
+
+  # Control Panel UI
+  handle {
+    root * /opt/runway/ui/dist
+    file_server
+    try_files {path} /index.html
+  }
+
+  # Automatic HTTPS via Let's Encrypt
+  # Caddy will automatically obtain and renew certificates
+}
+`;
+  }
+
+  /**
+   * Update main Caddyfile to include system config when domain is set
+   */
+  private async updateMainCaddyfileWithSystem(domain: string): Promise<void> {
+    try {
+      const projectSection = `\n  # Deployed projects - Import all site configs\n  import ${SITES_DIR}/*.caddy`;
+
+      // Include system.caddy import at the top
+      const mainConfig = `{
+  admin localhost:2019
+}
+
+# Import system domain configuration (HTTPS)
+import ${SYSTEM_CADDY_PATH}
+
+# Fallback HTTP access (IP-based)
+:80 {
+  # WebSocket support for realtime updates
+  @websocket_realtime {
+    path /api/realtime*
+  }
+  handle @websocket_realtime {
+    reverse_proxy 127.0.0.1:${API_PORT} {
+      header_up Upgrade {http.request.header.Upgrade}
+      header_up Connection {http.request.header.Connection}
+      header_up Host {http.request.header.Host}
+      header_up X-Real-IP {http.request.header.X-Real-IP}
+      header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+      header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+    }
+  }
+
+  # WebSocket support for project logs
+  @websocket_logs {
+    path /api/logs/*
+  }
+  handle @websocket_logs {
+    reverse_proxy 127.0.0.1:${API_PORT} {
+      header_up Upgrade {http.request.header.Upgrade}
+      header_up Connection {http.request.header.Connection}
+      header_up Host {http.request.header.Host}
+      header_up X-Real-IP {http.request.header.X-Real-IP}
+      header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
+      header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+    }
+  }
+
+  # Regular API requests
+  handle /api/* {
+    reverse_proxy 127.0.0.1:${API_PORT} {
+      transport http {
+        read_timeout 5m
+        write_timeout 5m
+      }
+    }
+  }
+${projectSection}
+
+  # Admin panel UI (fallback - must be last)
+  handle {
+    root * /opt/runway/ui/dist
+    try_files {path} /index.html
+    file_server
+    encode gzip
+  }
+}
+`;
+
+      await fs.writeFile(CADDYFILE_PATH, mainConfig);
+      logger.info('Updated main Caddyfile with system domain import');
+    } catch (error) {
+      logger.error('Failed to update main Caddyfile with system config', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Check if system domain is configured
+   */
+  async hasSystemDomain(): Promise<boolean> {
+    return fs.pathExists(SYSTEM_CADDY_PATH);
   }
 }
 

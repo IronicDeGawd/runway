@@ -25,6 +25,9 @@ let pm2Bus: any = null;
 // Event listener cleanup function
 let eventBroadcastingCleanup: (() => void) | null = null;
 
+// Reference to realtime WebSocket server for external broadcasts
+let realtimeWssRef: WebSocketServer | null = null;
+
 export const initWebSocket = (server: HttpServer) => {
   logger.info('🔌 Initializing WebSocket servers...');
   
@@ -34,6 +37,9 @@ export const initWebSocket = (server: HttpServer) => {
   
   const realtimeWss = new WebSocketServer({ noServer: true });
   logger.info('✅ Realtime WebSocket server created');
+
+  // Store reference for external broadcasts
+  realtimeWssRef = realtimeWss;
 
   // Setup handlers
   setupLogsWebSocket(logsWss);
@@ -224,18 +230,18 @@ function setupRealtimeWebSocket(wss: WebSocketServer) {
 
         // Handle deployment request
         if (data.action === 'deploy' && data.payload) {
-          const { fileData, name, type, deploymentId, mode } = data.payload;
+          const { fileData, name, type, deploymentId, mode, envVars } = data.payload;
           if (!fileData || !name || !type) {
-            ws.send(JSON.stringify({ 
-              type: 'deploy:error', 
-              error: 'Missing required fields: fileData, name, or type' 
+            ws.send(JSON.stringify({
+              type: 'deploy:error',
+              error: 'Missing required fields: fileData, name, or type'
             }));
             return;
           }
 
           // Import deployment service dynamically to avoid circular deps
           const { handleWebSocketDeployment } = await import('./services/deploymentService');
-          await handleWebSocketDeployment(ws, fileData, name, type, deploymentId, mode);
+          await handleWebSocketDeployment(ws, fileData, name, type, deploymentId, mode, envVars);
         }
       } catch (err) {
         logger.warn('Invalid WebSocket message received', err);
@@ -297,12 +303,24 @@ function setupEventBroadcasting(wss: WebSocketServer): () => void {
     broadcastToChannel(wss, 'metrics', 'metrics:update', payload);
   };
 
+  // System domain change listener - broadcasts to ALL connected clients
+  const systemDomainChangedListener = (payload: EventPayloadMap['system:domain-changed']) => {
+    broadcastToAll(wss, 'system:domain-changed', payload);
+  };
+
+  // System security mode change listener - broadcasts to ALL connected clients
+  const systemSecurityModeChangedListener = (payload: EventPayloadMap['system:security-mode-changed']) => {
+    broadcastToAll(wss, 'system:security-mode-changed', payload);
+  };
+
   // Register listeners
   eventBus.onEvent('process:change', processChangeListener);
   eventBus.onEvent('activity:new', activityNewListener);
   eventBus.onEvent('service:change', serviceChangeListener);
   eventBus.onEvent('project:change', projectChangeListener);
   eventBus.onEvent('metrics:update', metricsUpdateListener);
+  eventBus.onEvent('system:domain-changed', systemDomainChangedListener);
+  eventBus.onEvent('system:security-mode-changed', systemSecurityModeChangedListener);
 
   // Return cleanup function
   return () => {
@@ -312,6 +330,8 @@ function setupEventBroadcasting(wss: WebSocketServer): () => void {
     eventBus.offEvent('service:change', serviceChangeListener);
     eventBus.offEvent('project:change', projectChangeListener);
     eventBus.offEvent('metrics:update', metricsUpdateListener);
+    eventBus.offEvent('system:domain-changed', systemDomainChangedListener);
+    eventBus.offEvent('system:security-mode-changed', systemSecurityModeChangedListener);
   };
 }
 
@@ -336,6 +356,26 @@ function broadcastToChannel<T extends RealtimeEvent>(
       client.send(message);
     }
   });
+}
+
+// Broadcast to ALL connected clients (for system-wide events)
+function broadcastToAll<T extends RealtimeEvent>(
+  wss: WebSocketServer,
+  eventType: T,
+  payload: EventPayloadMap[T]
+) {
+  const message = JSON.stringify({
+    type: eventType,
+    data: payload
+  });
+
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  });
+
+  logger.debug(`Broadcasted ${eventType} to all ${wss.clients.size} clients`);
 }
 
 // Check if any clients are subscribed to metrics
@@ -417,7 +457,7 @@ async function getSystemMetrics() {
 // Get disk usage with caching (only check every 15 minutes)
 async function getCachedDiskUsage(): Promise<number> {
   const now = Date.now();
-  
+
   // Return cached value if still fresh (within 15 minutes)
   if (diskUsageCache && (now - diskUsageCache.timestamp) < DISK_CACHE_TTL) {
     return diskUsageCache.value;
@@ -428,13 +468,13 @@ async function getCachedDiskUsage(): Promise<number> {
   try {
     // Use Node.js native statfs instead of shell
     const stats = await statfs('/');
-    
+
     // Calculate percentage used
     const totalBlocks = stats.blocks;
     const freeBlocks = stats.bfree;
     const usedBlocks = totalBlocks - freeBlocks;
     diskUsage = Math.round((usedBlocks / totalBlocks) * 100 * 10) / 10;
-    
+
     // Update cache
     diskUsageCache = {
       value: diskUsage,
@@ -447,4 +487,29 @@ async function getCachedDiskUsage(): Promise<number> {
   }
 
   return diskUsage;
+}
+
+/**
+ * Broadcast a message to all connected clients on a specific channel
+ * Used for system-wide events like domain configuration changes
+ */
+export function broadcast(eventType: string, payload: unknown): void {
+  if (!realtimeWssRef) {
+    logger.warn('WebSocket server not initialized, cannot broadcast');
+    return;
+  }
+
+  const message = JSON.stringify({
+    type: eventType,
+    data: payload
+  });
+
+  // Broadcast to all connected clients (system events go to everyone)
+  realtimeWssRef.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(message);
+    }
+  });
+
+  logger.debug(`Broadcasted ${eventType} to ${realtimeWssRef.clients.size} clients`);
 }
