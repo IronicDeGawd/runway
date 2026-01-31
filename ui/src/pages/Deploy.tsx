@@ -19,8 +19,8 @@ const steps = [
 
 const runtimes = [
   { id: 'react', label: 'React', icon: <RiReactjsFill className="w-8 h-8" /> },
-  { id: 'nextjs', label: 'Next.js', icon: <RiNextjsFill className="w-8 h-8" /> },
-  { id: 'nodejs', label: 'Node.js', icon: <FaNodeJs className="w-8 h-8" /> },
+  { id: 'next', label: 'Next.js', icon: <RiNextjsFill className="w-8 h-8" /> },
+  { id: 'node', label: 'Node.js', icon: <FaNodeJs className="w-8 h-8" /> },
   { id: 'static', label: 'Static', icon: <Globe className="w-8 h-8" /> },
 ];
 
