@@ -159,7 +159,7 @@ router.post('/deploy-prebuilt', requireAuth, upload.single('file'), async (req, 
     return next(new AppError('No file uploaded', 400));
   }
 
-  const { name, type, version } = req.body;
+  const { name, type, version, deploymentSource, envInjected } = req.body;
 
   if (!name || !type) {
     return next(new AppError('Missing name or type', 400));
@@ -171,12 +171,20 @@ router.post('/deploy-prebuilt', requireAuth, upload.single('file'), async (req, 
     return next(new AppError('Invalid project type', 400));
   }
 
+  // Parse ENV mutability flags
+  const source = deploymentSource === 'cli' ? 'cli' : 'ui';
+  const injected = envInjected === 'true' || envInjected === true;
+
   try {
     const project = await deploymentService.deployPrebuiltProject(
       req.file.path,
       name,
       type as ProjectType,
-      version
+      version,
+      {
+        deploymentSource: source,
+        envInjected: injected,
+      }
     );
     res.json({
       success: true,

@@ -1,4 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
+import { DeploymentSource, UploadType } from '@runway/shared';
 import { database } from '../services/database';
 import { AppError } from '../middleware/errorHandler';
 
@@ -15,6 +16,10 @@ export interface Deployment {
   startedAt: string;
   completedAt?: string;
   errorMessage?: string;
+  // ENV mutability tracking
+  deploymentSource?: DeploymentSource;
+  uploadType?: UploadType;
+  envInjected?: boolean;
 }
 
 interface DeploymentRow {
@@ -27,6 +32,10 @@ interface DeploymentRow {
   started_at: string;
   completed_at: string | null;
   error_message: string | null;
+  // ENV mutability tracking columns
+  deployment_source: DeploymentSource | null;
+  upload_type: UploadType | null;
+  env_injected: number;
 }
 
 function rowToDeployment(row: DeploymentRow): Deployment {
@@ -40,6 +49,10 @@ function rowToDeployment(row: DeploymentRow): Deployment {
     startedAt: row.started_at,
     completedAt: row.completed_at ?? undefined,
     errorMessage: row.error_message ?? undefined,
+    // ENV mutability tracking (with defaults for backward compatibility)
+    deploymentSource: row.deployment_source ?? 'ui',
+    uploadType: row.upload_type ?? 'full',
+    envInjected: row.env_injected === 1,
   };
 }
 
@@ -47,6 +60,10 @@ export interface CreateDeploymentInput {
   projectId: string;
   version?: string;
   buildMode?: BuildMode;
+  // ENV mutability tracking
+  deploymentSource?: DeploymentSource;
+  uploadType?: UploadType;
+  envInjected?: boolean;
 }
 
 export class DeploymentRepository {
@@ -55,9 +72,20 @@ export class DeploymentRepository {
     const now = new Date().toISOString();
 
     database.run(
-      `INSERT INTO deployments (id, project_id, version, status, build_mode, started_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, input.projectId, input.version ?? null, 'queued', input.buildMode ?? null, now]
+      `INSERT INTO deployments (id, project_id, version, status, build_mode,
+       deployment_source, upload_type, env_injected, started_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        input.projectId,
+        input.version ?? null,
+        'queued',
+        input.buildMode ?? null,
+        input.deploymentSource ?? 'ui',
+        input.uploadType ?? 'full',
+        input.envInjected ? 1 : 0,
+        now
+      ]
     );
 
     return {
@@ -66,6 +94,9 @@ export class DeploymentRepository {
       version: input.version,
       status: 'queued',
       buildMode: input.buildMode,
+      deploymentSource: input.deploymentSource ?? 'ui',
+      uploadType: input.uploadType ?? 'full',
+      envInjected: input.envInjected ?? false,
       startedAt: now,
     };
   }

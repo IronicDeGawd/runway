@@ -200,6 +200,55 @@ class DatabaseService {
           CREATE INDEX IF NOT EXISTS idx_projects_name ON projects(name);
           CREATE INDEX IF NOT EXISTS idx_projects_type ON projects(type);
         `
+      },
+      {
+        name: '003_system_config',
+        sql: `
+          -- system_config table for domain and security settings
+          CREATE TABLE IF NOT EXISTS system_config (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            domain TEXT,
+            domain_verified_at TEXT,
+            domain_active INTEGER NOT NULL DEFAULT 0,
+            verification_status TEXT CHECK(verification_status IN ('pending', 'verified', 'failed')),
+            last_checked TEXT,
+            failure_reason TEXT,
+            server_ip TEXT,
+            security_mode TEXT NOT NULL DEFAULT 'ip-http' CHECK(security_mode IN ('ip-http', 'domain-https')),
+            -- RSA keys for CLI authentication in HTTP mode
+            rsa_public_key TEXT,
+            rsa_private_key TEXT,
+            rsa_generated_at TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+          );
+
+          -- Initialize with default row
+          INSERT OR IGNORE INTO system_config (id, security_mode) VALUES (1, 'ip-http');
+        `
+      },
+      {
+        name: '004_env_mutability_tracking',
+        sql: `
+          -- Add ENV mutability tracking columns to projects table
+          -- deployment_source: 'ui' (web dashboard) or 'cli' (command line)
+          -- upload_type: 'full' (source + build), 'dist' (artifacts only), 'build' (CLI pre-built)
+          -- env_mutable: 1 = can modify ENV post-deploy, 0 = immutable
+          -- has_source: 1 = has source files for rebuild, 0 = dist-only
+          ALTER TABLE projects ADD COLUMN deployment_source TEXT DEFAULT 'ui'
+            CHECK(deployment_source IN ('ui', 'cli'));
+          ALTER TABLE projects ADD COLUMN upload_type TEXT DEFAULT 'full'
+            CHECK(upload_type IN ('full', 'dist', 'build'));
+          ALTER TABLE projects ADD COLUMN env_mutable INTEGER NOT NULL DEFAULT 1;
+          ALTER TABLE projects ADD COLUMN has_source INTEGER NOT NULL DEFAULT 1;
+
+          -- Add ENV tracking columns to deployments table
+          ALTER TABLE deployments ADD COLUMN deployment_source TEXT DEFAULT 'ui'
+            CHECK(deployment_source IN ('ui', 'cli'));
+          ALTER TABLE deployments ADD COLUMN upload_type TEXT DEFAULT 'full'
+            CHECK(upload_type IN ('full', 'dist', 'build'));
+          ALTER TABLE deployments ADD COLUMN env_injected INTEGER NOT NULL DEFAULT 0;
+        `
       }
     ];
   }

@@ -4,3 +4,4 @@ export { activityRepository, ActivityRepository, Activity, ActivityType, CreateA
 export { portRepository, PortRepository } from './portRepository';
 export { authRepository, AuthRepository } from './authRepository';
 export { envRepository, EnvRepository, EncryptedEnvVar } from './envRepository';
+export { systemRepository, SystemRepository } from './systemRepository';

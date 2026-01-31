@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from 'uuid';
-import { ProjectConfig, ProjectType, PackageManager } from '@runway/shared';
+import { ProjectConfig, ProjectType, PackageManager, DeploymentSource, UploadType } from '@runway/shared';
 import { database } from '../services/database';
 import { AppError } from '../middleware/errorHandler';
 
@@ -12,6 +12,11 @@ interface ProjectRow {
   domains: string | null;
   created_at: string;
   updated_at: string;
+  // ENV mutability tracking columns
+  deployment_source: DeploymentSource | null;
+  upload_type: UploadType | null;
+  env_mutable: number;
+  has_source: number;
 }
 
 function rowToProject(row: ProjectRow): ProjectConfig {
@@ -23,6 +28,11 @@ function rowToProject(row: ProjectRow): ProjectConfig {
     pkgManager: row.pkg_manager,
     domains: row.domains ? JSON.parse(row.domains) : undefined,
     createdAt: row.created_at,
+    // ENV mutability tracking (with defaults for backward compatibility)
+    deploymentSource: row.deployment_source ?? 'ui',
+    uploadType: row.upload_type ?? 'full',
+    envMutable: row.env_mutable === 1,
+    hasSource: row.has_source === 1,
   };
 }
 
@@ -54,8 +64,9 @@ export class ProjectRepository {
     }
 
     database.run(
-      `INSERT INTO projects (id, name, type, port, pkg_manager, domains, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO projects (id, name, type, port, pkg_manager, domains,
+       deployment_source, upload_type, env_mutable, has_source, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         project.name,
@@ -63,6 +74,10 @@ export class ProjectRepository {
         project.port,
         project.pkgManager,
         project.domains ? JSON.stringify(project.domains) : null,
+        project.deploymentSource ?? 'ui',
+        project.uploadType ?? 'full',
+        project.envMutable !== false ? 1 : 0,
+        project.hasSource !== false ? 1 : 0,
         createdAt,
         now
       ]
@@ -75,6 +90,10 @@ export class ProjectRepository {
       port: project.port,
       pkgManager: project.pkgManager,
       domains: project.domains,
+      deploymentSource: project.deploymentSource ?? 'ui',
+      uploadType: project.uploadType ?? 'full',
+      envMutable: project.envMutable !== false,
+      hasSource: project.hasSource !== false,
       createdAt,
     };
   }
@@ -113,6 +132,23 @@ export class ProjectRepository {
     if (updates.domains !== undefined) {
       fields.push('domains = ?');
       values.push(updates.domains ? JSON.stringify(updates.domains) : null);
+    }
+    // ENV mutability tracking fields
+    if (updates.deploymentSource !== undefined) {
+      fields.push('deployment_source = ?');
+      values.push(updates.deploymentSource);
+    }
+    if (updates.uploadType !== undefined) {
+      fields.push('upload_type = ?');
+      values.push(updates.uploadType);
+    }
+    if (updates.envMutable !== undefined) {
+      fields.push('env_mutable = ?');
+      values.push(updates.envMutable ? 1 : 0);
+    }
+    if (updates.hasSource !== undefined) {
+      fields.push('has_source = ?');
+      values.push(updates.hasSource ? 1 : 0);
     }
 
     values.push(id);
