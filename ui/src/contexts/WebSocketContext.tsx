@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
 
-type RealtimeEvent = 
+type RealtimeEvent =
   | 'metrics:update'
   | 'process:change'
   | 'activity:new'
   | 'service:change'
-  | 'project:change';
+  | 'project:change'
+  | 'system:domain-changed'
+  | 'system:security-mode-changed';
 
 interface WebSocketMessage {
   type: RealtimeEvent;
@@ -66,10 +68,16 @@ export function WebSocketProvider({ children }: WebSocketProviderProps) {
       setIsConnected(false);
       wsRef.current = null;
 
+      // Clear any existing reconnect timeout to prevent accumulation
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
       // Reconnect with exponential backoff
       const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 30000);
       reconnectAttempts.current++;
-      
+
       console.log(`Reconnecting in ${delay}ms (attempt ${reconnectAttempts.current})`);
       reconnectTimeoutRef.current = setTimeout(connect, delay);
     };

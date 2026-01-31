@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { Upload, Check, ArrowRight, ArrowLeft, RefreshCw, XCircle, Loader2, FileSearch, AlertTriangle, Globe } from 'lucide-react';
+import { Upload, Check, ArrowRight, ArrowLeft, RefreshCw, XCircle, Globe, Loader2, FileSearch, AlertTriangle, ChevronUp, ChevronDown, Plus, Trash2 } from 'lucide-react';
 import { useDeployFlow } from '@/hooks/useDeployFlow';
 import { useProjects } from '@/hooks/useProjects';
 import { RiReactjsFill, RiNextjsFill } from "react-icons/ri";
@@ -38,11 +38,31 @@ export default function DeployPage() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Environment variables state
+  const [showEnvVars, setShowEnvVars] = useState(false);
+  const [envVars, setEnvVars] = useState<{ name: string; value: string }[]>([]);
+
   // Derive current step index from hook state
   const stepIndex = steps.findIndex((s) => s.id === state.step);
 
   // Sync hook state with local form if needed, or just drive UI from hook
   // We need to keep input state local until submission
+
+  // Extract project name from zip filename
+  const extractProjectName = (filename: string): string => {
+    // Remove .zip extension and clean up the name
+    let name = filename.replace(/\.zip$/i, '');
+    // Remove common suffixes like -main, -master, -v1.0.0, etc.
+    name = name.replace(/-(main|master|dev|develop|release|v?\d+(\.\d+)*(\.\d+)?)$/i, '');
+    // Replace special characters with hyphens
+    name = name.replace(/[^a-zA-Z0-9-]/g, '-');
+    // Remove consecutive hyphens
+    name = name.replace(/-+/g, '-');
+    // Remove leading/trailing hyphens
+    name = name.replace(/^-|-$/g, '');
+    // Convert to lowercase
+    return name.toLowerCase();
+  };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -50,13 +70,27 @@ export default function DeployPage() {
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile?.name.endsWith('.zip')) {
       setFile(droppedFile);
+      // Auto-detect project name from zip filename if not already set
+      if (!projectName.trim()) {
+        const suggestedName = extractProjectName(droppedFile.name);
+        if (suggestedName) {
+          setProjectName(suggestedName);
+        }
+      }
     }
-  }, []);
+  }, [projectName]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       setFile(selectedFile);
+      // Auto-detect project name from zip filename if not already set
+      if (!projectName.trim()) {
+        const suggestedName = extractProjectName(selectedFile.name);
+        if (suggestedName) {
+          setProjectName(suggestedName);
+        }
+      }
     }
   };
 
@@ -109,10 +143,20 @@ export default function DeployPage() {
 
   const handleConfigureContinue = async () => {
     if (!file) return;
+    // Convert env vars array to Record<string, string>
+    const envVarsRecord = envVars
+      .filter(e => e.name.trim())
+      .reduce((acc, e) => ({ ...acc, [e.name]: e.value }), {} as Record<string, string>);
+
     // Update config in hook before confirming (optional now, but good for consistency)
     startDeploy(file, { runtime: selectedRuntime, name: projectName, mode: 'create' });
     // Pass config directly to avoid race condition with state update
-    await confirmConfig({ name: projectName, runtime: selectedRuntime, mode: 'create' });
+    await confirmConfig({
+      name: projectName,
+      runtime: selectedRuntime,
+      mode: 'create',
+      envVars: Object.keys(envVarsRecord).length > 0 ? envVarsRecord : undefined
+    });
   };
 
   const canProceed = () => {
@@ -273,6 +317,76 @@ export default function DeployPage() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Environment Variables (Optional) */}
+                <div className="space-y-2 pt-4 border-t border-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setShowEnvVars(!showEnvVars)}
+                    className="flex items-center gap-2 text-sm font-medium text-foreground hover:text-neon transition-colors"
+                  >
+                    {showEnvVars ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    Environment Variables (Optional)
+                    {envVars.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-pill bg-neon/20 text-neon text-xs">
+                        {envVars.filter(e => e.name.trim()).length}
+                      </span>
+                    )}
+                  </button>
+
+                  {showEnvVars && (
+                    <div className="space-y-3 pt-3">
+                      <p className="text-sm text-zinc-500">
+                        Set environment variables for your project. You can also add these later in project settings.
+                      </p>
+
+                      {envVars.map((envVar, index) => (
+                        <div key={index} className="flex gap-2">
+                          <input
+                            type="text"
+                            placeholder="KEY"
+                            value={envVar.name}
+                            onChange={(e) => {
+                              setEnvVars(envVars.map((v, i) =>
+                                i === index
+                                  ? { ...v, name: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') }
+                                  : v
+                              ));
+                            }}
+                            className="flex-1 px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500"
+                          />
+                          <input
+                            type="text"
+                            placeholder="VALUE"
+                            value={envVar.value}
+                            onChange={(e) => {
+                              setEnvVars(envVars.map((v, i) =>
+                                i === index ? { ...v, value: e.target.value } : v
+                              ));
+                            }}
+                            className="flex-[2] px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEnvVars(envVars.filter((_, i) => i !== index))}
+                            className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-element"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={() => setEnvVars([...envVars, { name: '', value: '' }])}
+                        className="flex items-center gap-2 text-sm text-neon hover:text-neon-hover font-medium px-2"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Variable
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

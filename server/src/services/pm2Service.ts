@@ -237,6 +237,63 @@ export class PM2Service {
     }
   }
 
+  /**
+   * Restart a project with new environment variables.
+   * Unlike restartProject(), this properly reloads env vars by deleting
+   * and re-starting the process with a freshly generated config.
+   */
+  async restartWithNewEnv(projectId: string): Promise<void> {
+    const project = await projectRegistry.getById(projectId);
+    if (!project) {
+      throw new AppError('Project not found for restart', 404);
+    }
+
+    if (project.type === 'react') {
+      logger.info(`Skipping PM2 restart for static React project ${project.name}`);
+      return;
+    }
+
+    logger.info(`Restarting ${project.name} with new environment variables...`);
+
+    try {
+      await this.connect();
+
+      // Delete existing process to clear old environment
+      await this.delete(projectId);
+
+      // Ensure log directory exists
+      const projectDir = path.join(APPS_DIR, project.id, 'logs');
+      await fs.ensureDir(projectDir);
+
+      // Regenerate config with fresh env vars from envManager
+      const config = await this.generateEcosystemConfig(project);
+
+      // Start with new config (includes updated env vars)
+      await this.start(config);
+
+      // Log activity
+      await activityLogger.log('config', project.name, 'Environment variables updated and applied');
+
+      eventBus.emitEvent('process:change', {
+        projectId,
+        status: 'running'
+      });
+
+      logger.info(`Successfully restarted ${project.name} with new environment variables`);
+    } catch (error) {
+      logger.error(`Failed to restart ${projectId} with new env`, error);
+
+      eventBus.emitEvent('process:change', {
+        projectId,
+        status: 'failed'
+      });
+
+      throw new AppError('Failed to restart process with new environment', 500);
+    } finally {
+      this.disconnect();
+    }
+  }
+
   async deleteProject(projectId: string): Promise<void> {
     try {
       await this.connect();
