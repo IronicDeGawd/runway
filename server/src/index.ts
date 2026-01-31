@@ -13,7 +13,10 @@ import { envRouter } from './routes/env';
 import { servicesRouter } from './routes/services';
 import { metricsRouter } from './routes/metrics';
 import { activityRouter } from './routes/activity';
+import { domainRouter } from './routes/domain';
+import { cliAuthRouter } from './routes/cliAuth';
 import { initWebSocket } from './websocket';
+import { rsaKeyManager } from './services/rsaKeyManager';
 import { pm2Service } from './services/pm2Service';
 import { startResourceMonitor } from './services/resourceMonitor'
 
@@ -38,6 +41,8 @@ app.use('/api/env', envRouter);
 app.use('/api/services', servicesRouter);
 app.use('/api/metrics', metricsRouter);
 app.use('/api/activity', activityRouter);
+app.use('/api/domain', domainRouter);
+app.use('/api/cli', cliAuthRouter);
 
 // Health check
 app.get('/health', (req, res) => {
@@ -109,5 +114,13 @@ httpServer.listen(port, async () => {
     logger.info('✅ Resource monitor started');
   } catch (error) {
     logger.error('Failed to start resource monitor', error);
+  }
+
+  // Initialize RSA keys for CLI authentication
+  try {
+    await rsaKeyManager.initialize();
+    logger.info('✅ RSA key manager initialized');
+  } catch (error) {
+    logger.error('Failed to initialize RSA key manager', error);
   }
 });

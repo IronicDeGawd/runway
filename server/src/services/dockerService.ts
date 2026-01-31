@@ -312,6 +312,60 @@ volumes:
     }
   }
 
+  /**
+   * Configure an existing service with new settings.
+   * Stops the service, updates config, and restarts with new settings.
+   */
+  async configureService(
+    type: ServiceType,
+    config: { port?: number; credentials?: { username?: string; password?: string; database?: string } }
+  ): Promise<void> {
+    await this.ensureDockerChecked();
+    if (!this.isDockerAvailable) throw new AppError('Docker not installed', 503);
+
+    logger.info(`Configuring ${type} service with new settings...`);
+
+    try {
+      // Stop the service first
+      try {
+        await execAsync(`docker compose -f ${COMPOSE_FILE} stop ${type}`);
+        logger.info(`Stopped ${type} service for reconfiguration`);
+      } catch (e) {
+        // Service might not be running, continue
+        logger.warn(`Service ${type} was not running, continuing with reconfiguration`);
+      }
+
+      // Update compose file with new config
+      await this.updateComposeFileWithConfig(type, config);
+
+      // Remove the old container (but keep volumes to preserve data)
+      try {
+        await execAsync(`docker compose -f ${COMPOSE_FILE} rm -f ${type}`);
+      } catch (e) {
+        // Container might not exist, continue
+      }
+
+      // Recreate the container with new config
+      await execAsync(`docker compose -f ${COMPOSE_FILE} up -d ${type}`);
+
+      eventBus.emitEvent('service:change', {
+        type,
+        status: 'running'
+      });
+
+      logger.info(`Successfully reconfigured and restarted ${type} service`);
+    } catch (error) {
+      logger.error(`Failed to reconfigure ${type}`, error);
+
+      eventBus.emitEvent('service:change', {
+        type,
+        status: 'error'
+      });
+
+      throw new AppError(`Failed to apply configuration to ${type}`, 500);
+    }
+  }
+
   private async updateComposeFileWithConfig(
     type: ServiceType,
     config: { port?: number; credentials?: { username?: string; password?: string; database?: string } }

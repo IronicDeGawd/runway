@@ -5,6 +5,17 @@ export type ProcessStatus = 'running' | 'stopped' | 'failed' | 'building' | 'onl
 export type BuildMode = 'local' | 'server';
 export type DeploymentJobStatus = 'queued' | 'building' | 'deploying' | 'success' | 'failed';
 
+// ENV Mutability Tracking Types
+export type DeploymentSource = 'ui' | 'cli';
+export type UploadType = 'full' | 'dist' | 'build';
+export type EnvImmutableReason = 'dist-only' | 'cli-no-injection' | 'static-site';
+
+export interface EnvMutabilityInfo {
+  mutable: boolean;
+  reason?: EnvImmutableReason;
+  message?: string;
+}
+
 export interface ProjectConfig {
   id: string;
   name: string;
@@ -14,6 +25,11 @@ export interface ProjectConfig {
   pkgManager: PackageManager;
   env?: Record<string, string>;
   domains?: string[];
+  // ENV mutability tracking
+  deploymentSource?: DeploymentSource;
+  uploadType?: UploadType;
+  envMutable?: boolean;
+  hasSource?: boolean;
 }
 
 export interface ProjectWithStatus extends ProjectConfig {
@@ -42,6 +58,10 @@ export interface Deployment {
   startedAt: string;
   completedAt?: string;
   errorMessage?: string;
+  // ENV mutability tracking
+  deploymentSource?: DeploymentSource;
+  uploadType?: UploadType;
+  envInjected?: boolean;
 }
 
 export interface Activity {
@@ -51,4 +71,31 @@ export interface Activity {
   message: string;
   timestamp: string;
   deploymentId?: string;
+}
+
+// System Domain Configuration Types
+export type SecurityMode = 'ip-http' | 'domain-https';
+export type VerificationStatus = 'pending' | 'verified' | 'failed';
+
+export interface SystemDomain {
+  domain: string;
+  verifiedAt: string | null;
+  active: boolean;
+  verificationStatus: VerificationStatus;
+  lastChecked: string | null;
+  failureReason?: string;
+}
+
+export interface SystemConfig {
+  domain?: SystemDomain;
+  securityMode: SecurityMode;
+  serverIp?: string;
+}
+
+export interface VerificationResult {
+  success: boolean;
+  domain: string;
+  resolvedIps: string[];
+  serverIp: string;
+  error?: string;
 }

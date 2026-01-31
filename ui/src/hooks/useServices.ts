@@ -97,12 +97,29 @@ export function useServices() {
     }
   });
 
+  const configureMutation = useMutation({
+    mutationFn: async ({ type, config }: { type: string; config: { port?: number; credentials?: { username?: string; password?: string; database?: string } } }) => {
+        await api.put(`/services/${type}/configure`, config);
+    },
+    onSuccess: () => {
+        toast.success(`Service reconfigured successfully`);
+        queryClient.invalidateQueries({ queryKey: ['services'] });
+    },
+    onError: (err: any) => {
+        toast.error(err.response?.data?.error || `Failed to configure service`);
+        throw err;
+    }
+  });
+
   return {
     services: services || [],
     isLoading,
     startService: (id: string) => startMutation.mutateAsync(id),
     stopService: (id: string) => stopMutation.mutateAsync(id),
     createService: (type: string) => createMutation.mutateAsync(type),
-    deleteService: (id: string) => deleteMutation.mutateAsync(id)
+    deleteService: (id: string) => deleteMutation.mutateAsync(id),
+    configureService: (type: string, config: { port?: number; credentials?: { username?: string; password?: string; database?: string } }) =>
+      configureMutation.mutateAsync({ type, config }),
+    isConfiguring: configureMutation.isPending
   };
 }

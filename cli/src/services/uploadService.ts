@@ -12,6 +12,9 @@ export interface UploadOptions {
   version?: string;
   buildMode: BuildMode;
   confirmServerBuild?: boolean;
+  // ENV mutability tracking
+  deploymentSource?: 'ui' | 'cli';
+  envInjected?: boolean;
 }
 
 export interface UploadResult {
@@ -82,7 +85,7 @@ export class UploadService {
   }
 
   async upload(options: UploadOptions): Promise<UploadResult> {
-    const { zipPath, projectName, projectType, version, buildMode, confirmServerBuild } = options;
+    const { zipPath, projectName, projectType, version, buildMode, confirmServerBuild, deploymentSource, envInjected } = options;
 
     if (!fs.existsSync(zipPath)) {
       return {
@@ -101,6 +104,13 @@ export class UploadService {
     }
     if (confirmServerBuild) {
       formData.append('confirmServerBuild', 'true');
+    }
+    // ENV mutability tracking
+    if (deploymentSource) {
+      formData.append('deploymentSource', deploymentSource);
+    }
+    if (envInjected !== undefined) {
+      formData.append('envInjected', envInjected ? 'true' : 'false');
     }
 
     // Choose endpoint based on build mode

@@ -42,8 +42,10 @@ export function useDeployFlow() {
     logs: [],
   });
   const [isDeploying, setIsDeploying] = React.useState(false);
-  const [deployConfig, setDeployConfig] = React.useState<{file?: File, name: string, runtime: string, mode?: 'create' | 'update'} | null>(null);
+  const [deployConfig, setDeployConfig] = React.useState<{file?: File, name: string, runtime: string, mode?: 'create' | 'update', envVars?: Record<string, string>} | null>(null);
   const wsRef = React.useRef<WebSocket | null>(null);
+  const pollIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
+  const pollTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   const startDeploy = React.useCallback((file?: File, config?: { runtime: string; name: string; mode?: 'create' | 'update' }) => {
     console.log('startDeploy called with:', { file: file?.name, config });
@@ -99,7 +101,7 @@ export function useDeployFlow() {
     }));
   }, []);
 
-  const confirmConfig = React.useCallback(async (configOverride?: { file?: File, name?: string, runtime?: string, mode?: 'create' | 'update' }) => {
+  const confirmConfig = React.useCallback(async (configOverride?: { file?: File, name?: string, runtime?: string, mode?: 'create' | 'update', envVars?: Record<string, string> }) => {
     const finalConfig = { ...deployConfig, ...configOverride };
     
     if (!finalConfig || !finalConfig.file || !finalConfig.name || !finalConfig.runtime) {
@@ -142,6 +144,7 @@ export function useDeployFlow() {
             deploymentId,
             mode: finalConfig.mode,
             confirmServerBuild: state.confirmServerBuild || false,
+            envVars: finalConfig.envVars
           }
         }));
       };
@@ -205,19 +208,33 @@ export function useDeployFlow() {
         // If we were deploying and didn't get a success/error, poll for status
         if (state.step !== 'complete' && !state.error) {
            console.log('Unexpected disconnect, polling status...');
-           const pollInterval = setInterval(async () => {
+
+           // Clear any existing polling to prevent accumulation
+           if (pollIntervalRef.current) {
+             clearInterval(pollIntervalRef.current);
+             pollIntervalRef.current = null;
+           }
+           if (pollTimeoutRef.current) {
+             clearTimeout(pollTimeoutRef.current);
+             pollTimeoutRef.current = null;
+           }
+
+           pollIntervalRef.current = setInterval(async () => {
              try {
                const response = await fetch(`/api/project/status/${deploymentId}`, {
                  headers: { 'Authorization': `Bearer ${token}` }
                });
-               
+
                if (response.ok) {
                  const json = await response.json();
                  const status = json.data;
-                 
+
                  if (status) {
                     if (status.status === 'success') {
-                      clearInterval(pollInterval);
+                      if (pollIntervalRef.current) {
+                        clearInterval(pollIntervalRef.current);
+                        pollIntervalRef.current = null;
+                      }
                       setState(prev => ({
                         ...prev,
                         step: 'complete',
@@ -228,7 +245,10 @@ export function useDeployFlow() {
                       setIsDeploying(false);
                       toast.success('Deployment successful!');
                     } else if (status.status === 'failed') {
-                      clearInterval(pollInterval);
+                      if (pollIntervalRef.current) {
+                        clearInterval(pollIntervalRef.current);
+                        pollIntervalRef.current = null;
+                      }
                        setState(prev => ({
                         ...prev,
                         error: status.error || 'Deployment failed',
@@ -255,9 +275,14 @@ export function useDeployFlow() {
            }, 2000);
 
            // Stop polling after 60s
-           setTimeout(() => clearInterval(pollInterval), 60000);
+           pollTimeoutRef.current = setTimeout(() => {
+             if (pollIntervalRef.current) {
+               clearInterval(pollIntervalRef.current);
+               pollIntervalRef.current = null;
+             }
+           }, 60000);
         }
-        
+
         wsRef.current = null;
         // Don't set isDeploying(false) here immediately if we are polling
       };
@@ -279,6 +304,15 @@ export function useDeployFlow() {
       wsRef.current.close();
       wsRef.current = null;
     }
+    // Clear polling interval and timeout to prevent memory leaks
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    if (pollTimeoutRef.current) {
+      clearTimeout(pollTimeoutRef.current);
+      pollTimeoutRef.current = null;
+    }
     setState({
       step: "upload",
       progress: 0,
@@ -299,6 +333,15 @@ export function useDeployFlow() {
     return () => {
       if (wsRef.current) {
         wsRef.current.close();
+      }
+      // Clean up polling interval and timeout to prevent memory leaks
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      if (pollTimeoutRef.current) {
+        clearTimeout(pollTimeoutRef.current);
+        pollTimeoutRef.current = null;
       }
     };
   }, []);

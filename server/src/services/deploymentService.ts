@@ -3,7 +3,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import util from 'util';
 import { v4 as uuidv4 } from 'uuid';
-import { ProjectConfig, PackageManager, ProjectType } from '@runway/shared';
+import { ProjectConfig, PackageManager, ProjectType, DeploymentSource, UploadType } from '@runway/shared';
 import { extractZip, findProjectRoot } from './zipService';
 import { projectRegistry } from './projectRegistry';
 import { portManager } from './portManager';
@@ -16,6 +16,8 @@ import { eventBus } from '../events/eventBus';
 import { caddyConfigManager } from './caddyConfigManager';
 import { BuildDetector } from './buildDetector';
 import { patcherService } from './patcher/patcherService';
+import { UploadTypeDetector } from './uploadTypeDetector';
+import { EnvMutabilityCalculator } from './envMutabilityCalculator';
 
 const execAsync = util.promisify(exec);
 
@@ -150,7 +152,11 @@ export class DeploymentService {
       buildMode?: 'local' | 'server',
       confirmServerBuild?: boolean,
       forceBuild?: boolean,
-      domains?: string[]
+      domains?: string[],
+      envVars?: Record<string, string>,
+      // ENV mutability tracking
+      deploymentSource?: DeploymentSource,
+      envInjected?: boolean
     } = {}
   ): Promise<ProjectConfig> {
     const deployId = options.deploymentId || uuidv4();
@@ -232,6 +238,18 @@ export class DeploymentService {
         logger.info(`✅ Build verified: ${buildPath}`);
       }
 
+      // 6.5. Detect upload type and calculate ENV mutability
+      const uploadTypeResult = await UploadTypeDetector.detect(stagingDir, type);
+      const deploymentSource: DeploymentSource = options.deploymentSource || 'ui';
+      const mutabilityInfo = EnvMutabilityCalculator.calculate({
+        projectType: type,
+        uploadType: uploadTypeResult.uploadType,
+        deploymentSource,
+        envInjected: options.envInjected ?? false,
+        hasSource: uploadTypeResult.hasSource,
+      });
+      logger.info(`Upload type: ${uploadTypeResult.uploadType}, ENV mutable: ${mutabilityInfo.mutable}`);
+
       // 7. ✅ CRITICAL FIX: Allocate port AFTER successful build
       let project = (await projectRegistry.getAll()).find(p => p.name === projectName);
       let projectId = project ? project.id : uuidv4();
@@ -270,6 +288,11 @@ export class DeploymentService {
         createdAt: project ? project.createdAt : new Date().toISOString(),
         pkgManager,
         domains: options.domains || project?.domains,
+        // ENV mutability tracking
+        deploymentSource,
+        uploadType: uploadTypeResult.uploadType,
+        envMutable: mutabilityInfo.mutable,
+        hasSource: uploadTypeResult.hasSource,
       };
 
       if (project) {
@@ -278,6 +301,24 @@ export class DeploymentService {
         await projectRegistry.create(newConfig);
       }
       logger.info('✅ Project registered');
+
+      // 10.5. Set initial environment variables if provided at deployment time
+      if (options.envVars && Object.keys(options.envVars).length > 0) {
+        reportProgress('env', 'Setting environment variables...', 75);
+        // Skip mutability check for initial deployment
+        await envManager.setEnv(projectId, options.envVars, true);
+        logger.info(`Set ${Object.keys(options.envVars).length} environment variables`);
+      }
+
+      // 10.6. Cleanup node_modules for React/Next.js projects to save disk space
+      if (type === 'react' || type === 'next') {
+        const nodeModulesPath = path.join(targetDir, 'node_modules');
+        if (await fs.pathExists(nodeModulesPath)) {
+          reportProgress('cleanup', 'Cleaning up build dependencies...', 78);
+          await fs.remove(nodeModulesPath);
+          logger.info('Cleaned up node_modules after build');
+        }
+      }
 
       // 11. Start PM2 process (if not static site)
       if (type !== 'react' && type !== 'static') {
@@ -418,7 +459,11 @@ export class DeploymentService {
     filePath: string,
     projectName: string,
     type: ProjectType,
-    version?: string
+    version?: string,
+    options: {
+      deploymentSource?: DeploymentSource,
+      envInjected?: boolean
+    } = {}
   ): Promise<ProjectConfig> {
     const deployId = uuidv4();
     const stagingDir = path.join(TEMP_DIR, deployId);
@@ -492,6 +537,18 @@ export class DeploymentService {
         }
       }
 
+      // 5.5. Detect upload type and calculate ENV mutability
+      const uploadTypeResult = await UploadTypeDetector.detect(stagingDir, type);
+      const deploymentSource: DeploymentSource = options.deploymentSource || 'cli';
+      const mutabilityInfo = EnvMutabilityCalculator.calculate({
+        projectType: type,
+        uploadType: uploadTypeResult.uploadType,
+        deploymentSource,
+        envInjected: options.envInjected ?? false,
+        hasSource: uploadTypeResult.hasSource,
+      });
+      logger.info(`Pre-built upload type: ${uploadTypeResult.uploadType}, ENV mutable: ${mutabilityInfo.mutable}`);
+
       // 6. Check for existing project
       const allProjects = await projectRegistry.getAll();
       const existingProject = allProjects.find(p => p.name === projectName);
@@ -531,6 +588,11 @@ export class DeploymentService {
         port,
         createdAt: existingProject ? existingProject.createdAt : new Date().toISOString(),
         pkgManager,
+        // ENV mutability tracking
+        deploymentSource,
+        uploadType: uploadTypeResult.uploadType,
+        envMutable: mutabilityInfo.mutable,
+        hasSource: uploadTypeResult.hasSource,
       };
 
       if (existingProject) {
@@ -713,7 +775,8 @@ export async function handleWebSocketDeployment(
   projectName: string,
   type: ProjectType,
   deploymentId?: string,
-  mode?: 'create' | 'update'
+  mode?: 'create' | 'update',
+  envVars?: Record<string, string>
 ): Promise<void> {
   const effectiveDeploymentId = deploymentId || uuidv4();
   
@@ -789,6 +852,7 @@ export async function handleWebSocketDeployment(
     const project = await deploymentService.deployProject(tempFilePath, projectName, type, {
       deploymentId: effectiveDeploymentId,
       mode,
+      envVars,
       onProgress: (step: string, message: string, progress: number) => {
         sendProgress(step, message, progress);
       }

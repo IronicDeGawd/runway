@@ -1,7 +1,8 @@
 import inquirer from 'inquirer';
 import axios from 'axios';
-import { setServerUrl, setToken, getConfig, isConfigured } from '../utils/config';
+import { setServerUrl, setAuthData, getConfig, isConfigured } from '../utils/config';
 import { logger } from '../utils/logger';
+import { AuthService } from '../services/authService';
 
 interface InitOptions {
   server?: string;
@@ -14,6 +15,9 @@ export async function initCommand(options: InitOptions): Promise<void> {
   if (isConfigured()) {
     const config = getConfig();
     logger.info(`Currently configured to: ${config.serverUrl}`);
+    if (config.securityMode) {
+      logger.dim(`Security mode: ${config.securityMode === 'domain-https' ? 'HTTPS (secure)' : 'HTTP (limited)'}`);
+    }
 
     const { reconfigure } = await inquirer.prompt([
       {
@@ -67,7 +71,52 @@ export async function initCommand(options: InitOptions): Promise<void> {
     return;
   }
 
+  // Initialize auth service
+  const authService = new AuthService(serverUrl);
+
+  // Check security mode
+  logger.info('Checking server security mode...');
+  let securityInfo;
+  try {
+    securityInfo = await authService.getSecurityMode();
+  } catch (error) {
+    logger.error('Failed to get server security mode');
+    logger.dim('The server may be running an older version without CLI auth support.');
+    logger.dim('Falling back to legacy authentication...');
+    await legacyAuth(serverUrl);
+    return;
+  }
+
+  // Display security info
+  if (securityInfo.securityMode === 'domain-https') {
+    logger.success(`Server has HTTPS enabled: ${securityInfo.domain}`);
+    logger.dim('Authentication will use secure TLS connection.');
+  } else {
+    logger.warn('Server is running in HTTP mode (no domain configured)');
+    logger.dim('Authentication will use RSA key exchange (MITM vulnerable).');
+    logger.blank();
+
+    const { proceed } = await inquirer.prompt([
+      {
+        type: 'confirm',
+        name: 'proceed',
+        message: 'Continue with RSA authentication?',
+        default: true,
+      },
+    ]);
+
+    if (!proceed) {
+      logger.blank();
+      logger.info('To enable secure authentication:');
+      logger.dim('  1. Configure a domain on your Runway server');
+      logger.dim('  2. Enable HTTPS through the Settings page');
+      logger.dim('  3. Run `runway init` again');
+      return;
+    }
+  }
+
   // Get credentials
+  logger.blank();
   const credentials = await inquirer.prompt([
     {
       type: 'input',
@@ -83,7 +132,56 @@ export async function initCommand(options: InitOptions): Promise<void> {
     },
   ]);
 
-  // Attempt login
+  // Authenticate using the auth service
+  logger.info('Authenticating...');
+  try {
+    const authResult = await authService.authenticate(
+      credentials.username,
+      credentials.password
+    );
+
+    // Save configuration with all auth data
+    setServerUrl(serverUrl);
+    setAuthData(authResult.token, authResult.expiresAt, authResult.securityMode);
+
+    logger.blank();
+    logger.success('Configuration saved successfully!');
+    logger.blank();
+    logger.info('You can now deploy projects with:');
+    logger.dim('  runway deploy');
+    logger.blank();
+
+    // Show token expiry warning for HTTP mode
+    if (authResult.securityMode === 'ip-http') {
+      logger.warn('Note: Token expires in 15 minutes due to HTTP mode.');
+      logger.dim('Run `runway init` to re-authenticate when needed.');
+    }
+  } catch (error) {
+    // Error already logged by AuthService
+    logger.blank();
+    logger.dim('Check your credentials and try again.');
+  }
+}
+
+/**
+ * Legacy authentication for servers without CLI auth support
+ */
+async function legacyAuth(serverUrl: string): Promise<void> {
+  const credentials = await inquirer.prompt([
+    {
+      type: 'input',
+      name: 'username',
+      message: 'Username:',
+      validate: (input: string) => input.length > 0 || 'Username is required',
+    },
+    {
+      type: 'password',
+      name: 'password',
+      message: 'Password:',
+      validate: (input: string) => input.length > 0 || 'Password is required',
+    },
+  ]);
+
   logger.info('Authenticating...');
   try {
     const response = await axios.post(
@@ -93,9 +191,9 @@ export async function initCommand(options: InitOptions): Promise<void> {
     );
 
     if (response.data.success && response.data?.token) {
-      // Save configuration
+      // Save configuration (legacy mode without expiry tracking)
       setServerUrl(serverUrl);
-      setToken(response.data.token);
+      setAuthData(response.data.token, '', 'ip-http');
 
       logger.blank();
       logger.success('Configuration saved successfully!');

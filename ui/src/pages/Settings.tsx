@@ -1,7 +1,9 @@
-import { useState } from 'react';
+// import { useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { Moon, Bell, RefreshCw, Info, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { DomainConfigPanel } from '@/components/DomainConfigPanel';
+import { /* Moon, Bell, RefreshCw, */ Info, AlertTriangle, ArrowLeft } from 'lucide-react';
 
+/* Switch component - commented out (used by mocked User Preferences)
 function Switch({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (checked: boolean) => void }) {
   return (
     <label className="relative inline-flex items-center cursor-pointer">
@@ -15,11 +17,13 @@ function Switch({ checked, onCheckedChange }: { checked: boolean; onCheckedChang
     </label>
   );
 }
+*/
 
 export default function SettingsPage() {
-  const [darkMode, setDarkMode] = useState(true);
-  const [notifications, setNotifications] = useState(true);
-  const [autoRestart, setAutoRestart] = useState(false);
+  // Commented out - mocked User Preferences state
+  // const [darkMode, setDarkMode] = useState(true);
+  // const [notifications, setNotifications] = useState(true);
+  // const [autoRestart, setAutoRestart] = useState(false);
 
   return (
     <DashboardLayout>
@@ -35,60 +39,10 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Domain Configuration & System Info - Side by Side */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* User Preferences - Dark Panel */}
-          <div className="bg-surface-elevated rounded-card p-card border border-zinc-800">
-            <h2 className="text-lg font-semibold text-foreground mb-6">User Preferences</h2>
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-element bg-zinc-800 border border-zinc-700">
-                    <Moon className="h-5 w-5 text-zinc-400" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">Dark Mode</p>
-                    <p className="text-sm text-zinc-500">Use dark theme across the dashboard</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={darkMode}
-                  onCheckedChange={setDarkMode}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-element bg-zinc-800 border border-zinc-700">
-                    <Bell className="h-5 w-5 text-zinc-400" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">Notifications</p>
-                    <p className="text-sm text-zinc-500">Receive alerts and updates</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={notifications}
-                  onCheckedChange={setNotifications}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-element bg-zinc-800 border border-zinc-700">
-                    <RefreshCw className="h-5 w-5 text-zinc-400" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-foreground">Auto-Restart</p>
-                    <p className="text-sm text-zinc-500">Automatically restart failed projects</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={autoRestart}
-                  onCheckedChange={setAutoRestart}
-                />
-              </div>
-            </div>
-          </div>
+          {/* Domain Configuration */}
+          <DomainConfigPanel />
 
           {/* System Info - Dark Panel */}
           <div className="bg-surface-elevated rounded-card p-card border border-zinc-800">

@@ -10,7 +10,7 @@ import { getAuthConfig } from '../config/auth';
 import { projectRegistry } from './projectRegistry';
 import { pm2Service } from './pm2Service';
 import { staticProcessService } from './staticProcessService';
-import { ProjectConfig } from '@runway/shared';
+import { ProjectConfig, EnvMutabilityInfo, EnvImmutableReason } from '@runway/shared';
 
 const execAsync = util.promisify(exec);
 
@@ -79,6 +79,47 @@ export class EnvManager {
   }
 
   /**
+   * Check if environment variables are mutable for a project
+   * Returns mutability info based on project metadata
+   */
+  async checkMutability(projectId: string): Promise<EnvMutabilityInfo> {
+    const project = await projectRegistry.getById(projectId);
+    if (!project) {
+      throw new AppError('Project not found', 404);
+    }
+
+    // Use the stored envMutable flag from project config
+    if (project.envMutable === false) {
+      // Determine reason based on project metadata
+      let reason: EnvImmutableReason = 'dist-only';
+      let message: string;
+
+      if (project.type === 'static') {
+        reason = 'static-site';
+        message = 'Static sites do not support environment variables.';
+      } else if (project.uploadType === 'dist' || project.hasSource === false) {
+        reason = 'dist-only';
+        message =
+          'This project was deployed using build artifacts only. Environment variables cannot be modified. Re-deploy the project with updated values.';
+      } else if (project.deploymentSource === 'cli' && project.uploadType === 'build') {
+        reason = 'cli-no-injection';
+        message =
+          'This project was deployed via CLI without environment injection. Environment variables cannot be modified. Re-deploy the project to change ENV values.';
+      } else {
+        message = 'Environment variables cannot be modified for this project.';
+      }
+
+      return {
+        mutable: false,
+        reason,
+        message,
+      };
+    }
+
+    return { mutable: true };
+  }
+
+  /**
    * Get decrypted environment variables for a project
    */
   async getEnv(projectId: string): Promise<Record<string, string>> {
@@ -98,10 +139,19 @@ export class EnvManager {
 
   /**
    * Set and encrypt environment variables
+   * Checks mutability first and throws 403 if ENV is immutable
    */
-  async setEnv(projectId: string, env: Record<string, string>): Promise<void> {
+  async setEnv(projectId: string, env: Record<string, string>, skipMutabilityCheck = false): Promise<void> {
+    // Check mutability before allowing update (unless explicitly skipped for initial deployment)
+    if (!skipMutabilityCheck) {
+      const mutability = await this.checkMutability(projectId);
+      if (!mutability.mutable) {
+        throw new AppError(mutability.message || 'Environment variables are immutable for this project', 403);
+      }
+    }
+
     const envPath = this.getEnvPath(projectId);
-    
+
     // Validate project existence
     if (!await fs.pathExists(path.dirname(envPath))) {
       throw new AppError('Project directory not found', 404);
@@ -144,11 +194,9 @@ export class EnvManager {
       // PM2 service uses envService.getEnv() (which we need to swap) or we pass it explicit
       // We'll update PM2Service to accept explicit env or use EnvManager
 
-      // Current pm2Service implementation relies on `envService.getEnv` inside `generateEcosystemConfig`
-      // We should probably update that call in pm2Service first.
-      // But we can trigger a restart:
-      await pm2Service.restartProject(project.id);
-      logger.info(`Restarted ${project.name} to apply environment variables`);
+      // Use restartWithNewEnv to properly reload env vars (delete + start with fresh config)
+      await pm2Service.restartWithNewEnv(project.id);
+      logger.info(`Restarted ${project.name} with updated environment variables`);
     }
   }
 

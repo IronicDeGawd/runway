@@ -12,11 +12,35 @@ import {
   Settings,
   Terminal as TerminalIcon,
   UploadCloud,
+  AlertTriangle,
 } from "lucide-react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { UpdateProjectModal } from "@/components/UpdateProjectModal";
 import { useProjects } from "@/hooks/useProjects";
 import { useActivity, formatTimeAgo } from "@/hooks/useActivity";
+
+// Format uptime from milliseconds to human-readable duration
+function formatUptime(uptimeMs: number): string {
+  if (!uptimeMs || uptimeMs <= 0) return "0s";
+
+  const seconds = Math.floor(uptimeMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) {
+    const remainingHours = hours % 24;
+    return remainingHours > 0 ? `${days}d ${remainingHours}h` : `${days}d`;
+  }
+  if (hours > 0) {
+    const remainingMinutes = minutes % 60;
+    return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m`;
+  }
+  return `${seconds}s`;
+}
 import { useProjectEnv } from "@/hooks/useProjectEnv";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -35,13 +59,13 @@ export default function ProjectDetailsPage() {
   const project = projects.find((p) => p.id === id);
   const projectActivity = activity.filter((a) => a.project === project?.name).slice(0, 10);
 
-  const { envVars, updateEnv, isLoading: envLoading, isSaving } = useProjectEnv(project?.id);
+  const { envVars, updateEnv, isLoading: envLoading, isSaving, mutability, mutabilityLoading, isMutable } = useProjectEnv(project?.id);
   const [localEnv, setLocalEnv] = React.useState<{ name: string, value: string }[]>([]);
 
-  // Sync env vars to local state when loaded
+  // Sync env vars to local state when loaded (deep clone to avoid mutation issues)
   React.useEffect(() => {
     if (envVars) {
-      setLocalEnv(envVars);
+      setLocalEnv(envVars.map(e => ({ ...e })));
     }
   }, [envVars]);
 
@@ -268,13 +292,15 @@ export default function ProjectDetailsPage() {
                     <div>
                       <div className="flex justify-between text-sm mb-2">
                         <span className="text-zinc-400">Uptime</span>
-                        <span className="text-foreground">{project.status === "running" ? "99.9%" : "0%"}</span>
+                        <span className="text-foreground">
+                          {project.status === "running" ? formatUptime(project.uptime) : "Stopped"}
+                        </span>
                       </div>
                       <div className="h-2 bg-zinc-800 rounded-pill overflow-hidden">
                         <motion.div
                           className="h-full bg-green-500"
                           initial={{ width: 0 }}
-                          animate={{ width: project.status === "running" ? "99%" : 0 }}
+                          animate={{ width: project.status === "running" ? "100%" : 0 }}
                         />
                       </div>
                     </div>
@@ -321,7 +347,10 @@ export default function ProjectDetailsPage() {
             <div
               className="bg-surface-elevated rounded-card p-6 border border-zinc-800"
               onPaste={(e) => {
-                // If the user pastes into an input, we might want to respect that default behavior 
+                // Don't allow paste if ENV is immutable
+                if (!isMutable) return;
+
+                // If the user pastes into an input, we might want to respect that default behavior
                 // UNLESS it looks like a multi-line generic paste.
                 // However, user said "paste on the page".
 
@@ -362,11 +391,28 @@ export default function ProjectDetailsPage() {
                 }
               }}
             >
+              {/* Immutable Warning Banner */}
+              {!mutabilityLoading && !isMutable && (
+                <div className="mb-6 p-4 bg-amber-900/20 border border-amber-700/50 rounded-lg">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <h3 className="font-medium text-amber-400">Environment Variables Locked</h3>
+                      <p className="text-sm text-amber-300/80 mt-1">
+                        {mutability?.message || 'Environment variables cannot be modified for this project.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-between items-center mb-6">
                 <div>
                   <h2 className="text-xl font-semibold text-foreground">Environment Variables</h2>
                   <p className="text-sm text-zinc-400 mt-1">
-                    Manage environment variables for your project. Changes are encrypted at rest.
+                    {isMutable
+                      ? 'Manage environment variables for your project. Changes are encrypted at rest.'
+                      : 'Environment variables are read-only for this deployment.'}
                   </p>
                 </div>
                 <button
@@ -374,8 +420,8 @@ export default function ProjectDetailsPage() {
                     const newEnv = localEnv.reduce((acc, curr) => ({ ...acc, [curr.name]: curr.value }), {});
                     updateEnv(newEnv);
                   }}
-                  disabled={!hasEnvChanged || isSaving || envLoading}
-                  className="px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon/90 font-medium text-sm transition-colors disabled:opacity-50"
+                  disabled={!isMutable || !hasEnvChanged || isSaving || envLoading}
+                  className="px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon/90 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isSaving ? 'Building...' : 'Save Changes'}
                 </button>
@@ -391,30 +437,48 @@ export default function ProjectDetailsPage() {
                         type="text"
                         placeholder="KEY"
                         value={item.name}
+                        disabled={!isMutable}
                         onChange={(e) => {
-                          const newEnv = [...localEnv];
-                          newEnv[index].name = e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '');
-                          setLocalEnv(newEnv);
+                          // Use immutable update to properly trigger change detection
+                          setLocalEnv(localEnv.map((envItem, i) =>
+                            i === index
+                              ? { ...envItem, name: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') }
+                              : envItem
+                          ));
                         }}
-                        className="flex-1 px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500"
+                        className={cn(
+                          "flex-1 px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500",
+                          !isMutable && "opacity-60 cursor-not-allowed"
+                        )}
                       />
                       <input
                         type="text"
                         placeholder="VALUE"
                         value={item.value}
+                        disabled={!isMutable}
                         onChange={(e) => {
-                          const newEnv = [...localEnv];
-                          newEnv[index].value = e.target.value;
-                          setLocalEnv(newEnv);
+                          // Use immutable update to properly trigger change detection
+                          setLocalEnv(localEnv.map((envItem, i) =>
+                            i === index
+                              ? { ...envItem, value: e.target.value }
+                              : envItem
+                          ));
                         }}
-                        className="flex-[2] px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500"
+                        className={cn(
+                          "flex-[2] px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500",
+                          !isMutable && "opacity-60 cursor-not-allowed"
+                        )}
                       />
                       <button
                         onClick={() => {
                           const newEnv = localEnv.filter((_, i) => i !== index);
                           setLocalEnv(newEnv);
                         }}
-                        className="p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-element"
+                        disabled={!isMutable}
+                        className={cn(
+                          "p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-element",
+                          !isMutable && "opacity-60 cursor-not-allowed hover:text-zinc-500 hover:bg-transparent"
+                        )}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -422,21 +486,30 @@ export default function ProjectDetailsPage() {
                   ))
                 )}
 
-                <button
-                  onClick={() => setLocalEnv([...localEnv, { name: "", value: "" }])}
-                  className="flex items-center gap-2 text-sm text-neon hover:text-neon-hover font-medium mt-2 px-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Variable
-                </button>
+                {/* Only show Add Variable button when mutable */}
+                {isMutable && (
+                  <button
+                    onClick={() => setLocalEnv([...localEnv, { name: "", value: "" }])}
+                    className="flex items-center gap-2 text-sm text-neon hover:text-neon-hover font-medium mt-2 px-2"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Variable
+                  </button>
+                )}
               </div>
 
               <div className="mt-6 pt-6 border-t border-zinc-800">
                 <p className="text-xs text-zinc-500">
-                  Note: Values are injected at runtime.
-                  {project.type === 'react'
-                    ? ' For React apps, updates apply instantly on page reload (no rebuild needed).'
-                    : ' For Node/Next.js apps, the process restarts automatically.'}
+                  {isMutable ? (
+                    <>
+                      Note: Values are injected at runtime.
+                      {project.type === 'react'
+                        ? ' For React apps, a rebuild is triggered when you save changes.'
+                        : ' For Node/Next.js apps, the process restarts automatically.'}
+                    </>
+                  ) : (
+                    'To change environment variables, re-deploy the project with the updated values.'
+                  )}
                 </p>
               </div>
             </div>

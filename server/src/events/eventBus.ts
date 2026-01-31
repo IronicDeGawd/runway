@@ -1,12 +1,16 @@
 import { EventEmitter } from 'events';
 
+import { SecurityMode } from '@runway/shared';
+
 // Event types
 export type RealtimeEvent =
   | 'metrics:update'
   | 'process:change'
   | 'activity:new'
   | 'service:change'
-  | 'project:change';
+  | 'project:change'
+  | 'system:domain-changed'
+  | 'system:security-mode-changed';
 
 // Event payload types
 export interface MetricsUpdatePayload {
@@ -47,6 +51,17 @@ export interface ProjectChangePayload {
   project?: any;
 }
 
+export interface SystemDomainChangedPayload {
+  domain: string | null;
+  securityMode: SecurityMode;
+  active: boolean;
+}
+
+export interface SystemSecurityModeChangedPayload {
+  mode: SecurityMode;
+  previousMode: SecurityMode;
+}
+
 // Event payload map
 export interface EventPayloadMap {
   'metrics:update': MetricsUpdatePayload;
@@ -54,6 +69,8 @@ export interface EventPayloadMap {
   'activity:new': ActivityNewPayload;
   'service:change': ServiceChangePayload;
   'project:change': ProjectChangePayload;
+  'system:domain-changed': SystemDomainChangedPayload;
+  'system:security-mode-changed': SystemSecurityModeChangedPayload;
 }
 
 class EventBus extends EventEmitter {

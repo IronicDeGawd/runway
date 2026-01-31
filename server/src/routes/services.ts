@@ -19,6 +19,17 @@ const CreateServiceSchema = z.object({
   }),
 });
 
+const ConfigureServiceSchema = z.object({
+  body: z.object({
+    port: z.number().int().min(1024).max(65535).optional(),
+    credentials: z.object({
+      username: z.string().min(1).optional(),
+      password: z.string().min(1).optional(),
+      database: z.string().min(1).optional(),
+    }).optional(),
+  }),
+});
+
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const services = await dockerService.getServices();
@@ -72,6 +83,20 @@ router.delete('/:type', requireAuth, async (req, res, next) => {
     }
     await dockerService.deleteService(type);
     res.json({ success: true, message: `${type} service removed` });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:type/configure', requireAuth, validateRequest(ConfigureServiceSchema), async (req, res, next) => {
+  try {
+    const { type } = req.params;
+    if (type !== 'postgres' && type !== 'redis') {
+      throw new AppError('Invalid service type', 400);
+    }
+    const { port, credentials } = req.body;
+    await dockerService.configureService(type, { port, credentials });
+    res.json({ success: true, message: `${type} configuration updated and service restarted` });
   } catch (error) {
     next(error);
   }

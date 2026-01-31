@@ -1,5 +1,7 @@
 import inquirer from 'inquirer';
 import ora from 'ora';
+import fs from 'fs';
+import path from 'path';
 import { ProjectType, BuildMode } from '@runway/shared';
 import { detectProject } from '../services/projectDetector';
 import { buildService } from '../services/buildService';
@@ -15,6 +17,70 @@ interface DeployOptions {
   buildLocal?: boolean;
   buildServer?: boolean;
   envFile?: string;
+  skipEnvPrompt?: boolean;
+}
+
+/**
+ * Parse a .env file into a Record
+ */
+function parseEnvFile(filePath: string): Record<string, string> {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const vars: Record<string, string> = {};
+
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    // Skip empty lines and comments
+    if (!trimmed || trimmed.startsWith('#')) continue;
+
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex > 0) {
+      const key = trimmed.slice(0, eqIndex).trim();
+      let value = trimmed.slice(eqIndex + 1).trim();
+      // Remove surrounding quotes if present
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      vars[key] = value;
+    }
+  }
+
+  return vars;
+}
+
+/**
+ * Prompt user for manual ENV variable entry
+ */
+async function promptManualEnvVars(): Promise<Record<string, string>> {
+  const vars: Record<string, string> = {};
+
+  logger.dim('Enter environment variables (empty name to finish):');
+
+  while (true) {
+    const { key } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'key',
+        message: 'Variable name:',
+      },
+    ]);
+
+    if (!key || !key.trim()) {
+      break;
+    }
+
+    const { value } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'value',
+        message: `Value for ${key}:`,
+      },
+    ]);
+
+    vars[key.toUpperCase().replace(/[^A-Z0-9_]/g, '')] = value;
+  }
+
+  return vars;
 }
 
 export async function deployCommand(options: DeployOptions): Promise<void> {
@@ -103,6 +169,55 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
 
   logger.blank();
 
+  // ENV source prompt for React/Next local builds
+  let envVars: Record<string, string> = {};
+  let envInjected = false;
+  let envFilePath = options.envFile;
+
+  if (buildMode === 'local' && (projectType === 'react' || projectType === 'next')) {
+    const defaultEnvPath = path.join(process.cwd(), '.env');
+    const hasEnvFile = fs.existsSync(defaultEnvPath);
+
+    if (!options.skipEnvPrompt && !options.envFile) {
+      const envChoices = [
+        ...(hasEnvFile ? [{ name: 'Use .env file', value: 'file' }] : []),
+        { name: 'Enter variables manually', value: 'manual' },
+        { name: 'Skip (ENV will be locked after deploy)', value: 'skip' },
+      ];
+
+      const { envSource } = await inquirer.prompt([
+        {
+          type: 'list',
+          name: 'envSource',
+          message: 'Environment variables for build:',
+          choices: envChoices,
+          default: hasEnvFile ? 'file' : 'skip',
+        },
+      ]);
+
+      if (envSource === 'file') {
+        envFilePath = defaultEnvPath;
+        envVars = parseEnvFile(defaultEnvPath);
+        envInjected = Object.keys(envVars).length > 0;
+        logger.success(`Loaded ${Object.keys(envVars).length} variables from .env`);
+      } else if (envSource === 'manual') {
+        envVars = await promptManualEnvVars();
+        envInjected = Object.keys(envVars).length > 0;
+        if (envInjected) {
+          logger.success(`Added ${Object.keys(envVars).length} environment variables`);
+        }
+      } else {
+        logger.warn('Skipping ENV injection - environment variables will be locked after deployment.');
+      }
+    } else if (options.envFile && fs.existsSync(options.envFile)) {
+      envVars = parseEnvFile(options.envFile);
+      envInjected = Object.keys(envVars).length > 0;
+      logger.success(`Loaded ${Object.keys(envVars).length} variables from ${options.envFile}`);
+    }
+
+    logger.blank();
+  }
+
   // Step 1: Build (for local-build mode)
   let buildOutputDir = detectedProject.buildOutputDir;
 
@@ -114,7 +229,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
       projectType,
       projectName,
       packageManager: detectedProject.packageManager,
-      envFile: options.envFile,
+      envFile: envFilePath,
     });
 
     if (!buildResult.success) {
@@ -207,6 +322,9 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     version: options.version,
     buildMode,
     confirmServerBuild,
+    // ENV mutability tracking
+    deploymentSource: 'cli',
+    envInjected,
   });
 
   // Cleanup zip file

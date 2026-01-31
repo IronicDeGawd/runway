@@ -35,6 +35,32 @@ cd my-react-app
 runway deploy
 ```
 
+## Security Modes
+
+The CLI supports two security modes depending on your server configuration:
+
+| Mode | Server Config | Token Lifetime | Authentication |
+|------|---------------|----------------|----------------|
+| **HTTPS** (domain-https) | Domain configured with TLS | 12 hours | Direct over TLS |
+| **HTTP** (ip-http) | IP-only access | 15 minutes | RSA key exchange |
+
+### HTTPS Mode (Recommended)
+
+When your Runway server has a domain configured with automatic TLS:
+- Credentials are sent directly over HTTPS
+- Tokens are valid for 12 hours
+- Token refresh is supported
+
+### HTTP Mode (Development Only)
+
+When accessing the server via IP address without TLS:
+- Credentials are encrypted using RSA public key exchange
+- Tokens expire in 15 minutes for security
+- Token refresh is **not** available (re-authentication required)
+- A warning is displayed about potential MITM vulnerabilities
+
+> **Security Note:** RSA key exchange over HTTP is vulnerable to man-in-the-middle attacks. Configure a domain on your server for production use.
+
 ## Commands
 
 ### `runway init`
@@ -51,6 +77,17 @@ runway init --server https://deploy.example.com
 
 **Options:**
 - `-s, --server <url>` - Runway server URL
+
+**Authentication Flow:**
+
+1. CLI queries the server's security mode
+2. If HTTPS mode: direct authentication over TLS
+3. If HTTP mode:
+   - Displays security warning
+   - Prompts for confirmation to proceed
+   - Fetches server's RSA public key
+   - Encrypts credentials before sending
+4. Token and security mode are saved to config
 
 The CLI stores configuration in `~/.runway/config.json`.
 
@@ -180,6 +217,8 @@ Configuration is stored at `~/.runway/config.json`:
 {
   "serverUrl": "https://deploy.example.com",
   "token": "your-jwt-token",
+  "tokenExpiresAt": "2026-01-31T12:00:00.000Z",
+  "securityMode": "domain-https",
   "defaultBuildMode": "local"
 }
 ```
@@ -190,6 +229,8 @@ Configuration is stored at `~/.runway/config.json`:
 |-----|-------------|
 | `serverUrl` | Runway server URL |
 | `token` | Authentication JWT token |
+| `tokenExpiresAt` | ISO timestamp when the token expires |
+| `securityMode` | Server security mode (`ip-http` or `domain-https`) |
 | `defaultBuildMode` | Default build mode (`local` or `server`) |
 
 ## Environment Variables
@@ -251,6 +292,19 @@ runway deploy --name my-site --type static
 
 Run `runway init` to configure the CLI with your server URL.
 
+### "Token expired" or "Unauthorized"
+
+Your authentication token has expired:
+- **HTTP mode (ip-http):** Tokens expire in 15 minutes. Run `runway init` to re-authenticate.
+- **HTTPS mode (domain-https):** Tokens expire in 12 hours. Run `runway init` to re-authenticate.
+
+### "RSA key exchange warning"
+
+This appears when connecting to a server without HTTPS:
+- The warning is informational - authentication will still work
+- For production, configure a domain on your Runway server to enable HTTPS
+- RSA encryption provides some protection, but is vulnerable to MITM attacks
+
 ### "Build failed"
 
 - Check that your project has a valid `build` script in `package.json`
@@ -260,13 +314,19 @@ Run `runway init` to configure the CLI with your server URL.
 ### "Upload failed"
 
 - Verify the server URL is correct
-- Check that your authentication token is valid
+- Check that your authentication token is valid (run `runway init` if expired)
 - Ensure the server is running and accessible
 
 ### "Project detection failed"
 
 - Ensure you're in a directory with a valid `package.json`
 - Check that `package.json` has a `name` field
+
+### "Failed to get security mode"
+
+- Verify the server URL is correct
+- Ensure the Runway server is running
+- Check network connectivity to the server
 
 ## Development
 
@@ -300,12 +360,13 @@ cli/
 │   │   ├── list.ts           # runway list
 │   │   └── status.ts         # runway status
 │   ├── services/
+│   │   ├── authService.ts     # Authentication (RSA + standard flows)
 │   │   ├── projectDetector.ts # Auto-detect project type
 │   │   ├── buildService.ts    # Run local builds
 │   │   ├── packageService.ts  # Create deployment zip
 │   │   └── uploadService.ts   # Upload to server
 │   └── utils/
-│       ├── config.ts          # CLI configuration
+│       ├── config.ts          # CLI configuration & token management
 │       └── logger.ts          # Colored output
 └── package.json
 ```
