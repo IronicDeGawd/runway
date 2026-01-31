@@ -4,7 +4,7 @@ import { exec } from 'child_process';
 import util from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import { ProjectConfig, PackageManager, ProjectType } from '@runway/shared';
-import { extractZip } from './zipService';
+import { extractZip, findProjectRoot } from './zipService';
 import { projectRegistry } from './projectRegistry';
 import { portManager } from './portManager';
 import { pm2Service } from './pm2Service';
@@ -27,13 +27,13 @@ fs.ensureDirSync(APPS_DIR);
 fs.ensureDirSync(TEMP_DIR);
 
 export class DeploymentService {
+  // Track cleanup timers to prevent timer accumulation
+  private cleanupTimers = new Map<string, NodeJS.Timeout>();
 
   /**
    * Detect package manager used in project
    */
-  
 
-  
   private async detectPackageManager(dir: string): Promise<PackageManager> {
     if (await fs.pathExists(path.join(dir, 'pnpm-lock.yaml'))) return 'pnpm';
     if (await fs.pathExists(path.join(dir, 'yarn.lock'))) return 'yarn';
@@ -140,13 +140,17 @@ export class DeploymentService {
   }
 
   async deployProject(
-    filePath: string, 
-    projectName: string, 
+    filePath: string,
+    projectName: string,
     type: ProjectType,
-    options: { 
+    options: {
       onProgress?: (step: string, message: string, percentage: number) => void,
       deploymentId?: string,
-      mode?: 'create' | 'update'
+      mode?: 'create' | 'update',
+      buildMode?: 'local' | 'server',
+      confirmServerBuild?: boolean,
+      forceBuild?: boolean,
+      domains?: string[]
     } = {}
   ): Promise<ProjectConfig> {
     const deployId = options.deploymentId || uuidv4();
@@ -178,7 +182,18 @@ export class DeploymentService {
       reportProgress('upload', 'Extracting package...', 10);
       await extractZip(filePath, stagingDir);
       logger.info('✅ Zip extracted');
-      
+
+      // Handle nested directory structure (e.g., zip -r project.zip my-app/)
+      const projectRoot = await findProjectRoot(stagingDir);
+      if (projectRoot !== stagingDir) {
+        // Move nested contents to staging root for consistent handling
+        const tempPath = stagingDir + '_temp';
+        await fs.move(projectRoot, tempPath);
+        await fs.remove(stagingDir);
+        await fs.move(tempPath, stagingDir);
+        logger.info('Flattened nested directory structure');
+      }
+
       // 2. Validate package.json exists
       const pkgJsonPath = path.join(stagingDir, 'package.json');
       if (!await fs.pathExists(pkgJsonPath)) {
@@ -202,7 +217,7 @@ export class DeploymentService {
         deploymentId: deployId
       });
 
-      // 6. Build the project (if required)
+      // 6. Build the project (if required) - static sites don't need building
       if (type === 'react' || type === 'next') {
         reportProgress('build', 'Building project...', 50);
         let existingProject = (await projectRegistry.getAll()).find(p => p.name === projectName);
@@ -233,7 +248,7 @@ export class DeploymentService {
       }
 
       // 8. Stop existing process before directory swap
-      if (project && project.type !== 'react') {
+      if (project && project.type !== 'react' && project.type !== 'static') {
         await pm2Service.stopProject(projectId);
         logger.info('Stopped existing PM2 process');
       }
@@ -254,6 +269,7 @@ export class DeploymentService {
         port,
         createdAt: project ? project.createdAt : new Date().toISOString(),
         pkgManager,
+        domains: options.domains || project?.domains,
       };
 
       if (project) {
@@ -263,11 +279,11 @@ export class DeploymentService {
       }
       logger.info('✅ Project registered');
 
-      // 11. Start PM2 process (if not static React)
-      if (type !== 'react') {
+      // 11. Start PM2 process (if not static site)
+      if (type !== 'react' && type !== 'static') {
         await pm2Service.startProject(newConfig);
         logger.info('PM2 process started');
-        
+
         // Quick health check
         await this.waitForProcessStart(newConfig);
       }
@@ -372,15 +388,215 @@ export class DeploymentService {
     });
 
     // Clean up successful/failed deployments after 5 minutes
+    // Use tracked timers to prevent timer accumulation
     if (update.status === 'success' || update.status === 'failed') {
-      setTimeout(() => {
+      // Clear any existing timer for this deployment ID
+      const existingTimer = this.cleanupTimers.get(id);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+      }
+
+      // Create new cleanup timer and track it
+      const timer = setTimeout(() => {
         this.activeDeployments.delete(id);
+        this.cleanupTimers.delete(id);
       }, 5 * 60 * 1000);
+
+      this.cleanupTimers.set(id, timer);
     }
   }
 
   getDeploymentStatus(id: string) {
     return this.activeDeployments.get(id);
+  }
+
+  /**
+   * Deploy a pre-built project (from CLI local build)
+   * Skips the install and build steps
+   */
+  async deployPrebuiltProject(
+    filePath: string,
+    projectName: string,
+    type: ProjectType,
+    version?: string
+  ): Promise<ProjectConfig> {
+    const deployId = uuidv4();
+    const stagingDir = path.join(TEMP_DIR, deployId);
+    let portAllocated = false;
+    let newPort: number | null = null;
+
+    logger.info(`[Deploy:${projectName}] Starting pre-built deployment ${deployId}`);
+
+    try {
+      // 1. Extract zip
+      await extractZip(filePath, stagingDir);
+      logger.info('✅ Zip extracted');
+
+      // Handle nested directory structure (e.g., zip -r project.zip my-app/)
+      const projectRoot = await findProjectRoot(stagingDir);
+      if (projectRoot !== stagingDir) {
+        // Move nested contents to staging root for consistent handling
+        const tempPath = stagingDir + '_temp';
+        await fs.move(projectRoot, tempPath);
+        await fs.remove(stagingDir);
+        await fs.move(tempPath, stagingDir);
+        logger.info('Flattened nested directory structure');
+      }
+
+      // 2. Validate package.json exists
+      const pkgJsonPath = path.join(stagingDir, 'package.json');
+      if (!await fs.pathExists(pkgJsonPath)) {
+        throw new AppError('Invalid project: package.json missing', 400);
+      }
+
+      // 3. Detect package manager
+      const pkgManager = await this.detectPackageManager(stagingDir);
+      logger.info(`Detected package manager: ${pkgManager}`);
+
+      // 4. For Next.js and Node.js, install production dependencies only
+      if (type !== 'react' && type !== 'static') {
+        logger.info('Installing production dependencies...');
+        const installCmd = pkgManager === 'npm'
+          ? 'npm install --omit=dev'
+          : pkgManager === 'yarn'
+          ? 'yarn install --production'
+          : 'pnpm install --prod';
+
+        try {
+          await execAsync(installCmd, {
+            cwd: stagingDir,
+            env: { ...process.env, NODE_ENV: 'production' }
+          });
+          logger.info('✅ Production dependencies installed');
+        } catch (error: any) {
+          logger.warn('Could not install production deps:', error.message);
+          // Continue anyway - maybe deps are bundled
+        }
+      }
+
+      // 5. Verify build output exists
+      if (type === 'react') {
+        const distPath = path.join(stagingDir, 'dist');
+        if (!await fs.pathExists(distPath)) {
+          throw new AppError('Build output not found. Make sure to include the dist/ folder.', 400);
+        }
+      } else if (type === 'next') {
+        const nextPath = path.join(stagingDir, '.next');
+        if (!await fs.pathExists(nextPath)) {
+          throw new AppError('Build output not found. Make sure to include the .next/ folder.', 400);
+        }
+      } else if (type === 'static') {
+        const indexPath = path.join(stagingDir, 'index.html');
+        if (!await fs.pathExists(indexPath)) {
+          throw new AppError('Static site must have an index.html file.', 400);
+        }
+      }
+
+      // 6. Check for existing project
+      const allProjects = await projectRegistry.getAll();
+      const existingProject = allProjects.find(p => p.name === projectName);
+
+      let projectId = existingProject ? existingProject.id : uuidv4();
+      let port: number;
+
+      if (existingProject) {
+        port = existingProject.port;
+        logger.info(`Reusing port ${port} for ${projectId}`);
+      } else {
+        port = await portManager.allocatePort(projectId);
+        newPort = port;
+        portAllocated = true;
+        logger.info(`Allocated port ${port} for ${projectId}`);
+      }
+
+      // 7. Stop existing process before directory swap
+      if (existingProject && existingProject.type !== 'react' && existingProject.type !== 'static') {
+        await pm2Service.stopProject(projectId);
+        logger.info('Stopped existing PM2 process');
+      }
+
+      // 8. Atomic directory swap
+      const targetDir = path.join(APPS_DIR, projectId);
+      if (await fs.pathExists(targetDir)) {
+        await fs.remove(targetDir);
+      }
+      await fs.move(stagingDir, targetDir);
+      logger.info(`Deployed to ${targetDir}`);
+
+      // 9. Register / Update Project
+      const newConfig: ProjectConfig = {
+        id: projectId,
+        name: projectName,
+        type,
+        port,
+        createdAt: existingProject ? existingProject.createdAt : new Date().toISOString(),
+        pkgManager,
+      };
+
+      if (existingProject) {
+        await projectRegistry.update(projectId, newConfig);
+      } else {
+        await projectRegistry.create(newConfig);
+      }
+      logger.info('✅ Project registered');
+
+      // 10. Start PM2 process (if not static site)
+      if (type !== 'react' && type !== 'static') {
+        await pm2Service.startProject(newConfig);
+        logger.info('PM2 process started');
+        await this.waitForProcessStart(newConfig);
+      }
+
+      // 11. Update Caddy config
+      await caddyConfigManager.updateProjectConfig(newConfig);
+      logger.info('✅ Caddy config updated');
+
+      // 12. Apply Runtime Config (for React env-config.js)
+      await envManager.applyEnv(projectId);
+
+      logger.info(`✅ Pre-built deployment successful for ${projectName} (${projectId})`);
+
+      // Log activity
+      await activityLogger.log('deploy', projectName,
+        `Deployed ${projectName} (${type}) from pre-built artifacts${version ? ` v${version}` : ''}`);
+
+      // Emit event for realtime updates
+      eventBus.emitEvent('project:change', {
+        action: existingProject ? 'updated' : 'created',
+        projectId,
+        project: newConfig
+      });
+
+      // Cleanup uploaded file
+      await fs.remove(filePath);
+
+      return newConfig;
+
+    } catch (error: any) {
+      logger.error('Pre-built deployment failed', {
+        error: error.message,
+        stack: error.stack
+      });
+
+      await activityLogger.log('error', projectName,
+        `Deployment failed: ${error.message}`);
+
+      // Cleanup
+      try {
+        if (await fs.pathExists(stagingDir)) {
+          await fs.remove(stagingDir);
+        }
+        if (portAllocated && newPort) {
+          await portManager.releasePort(newPort);
+        }
+      } catch (cleanupError) {
+        logger.error('Cleanup failed', cleanupError);
+      }
+
+      await fs.remove(filePath).catch(() => {});
+
+      throw error;
+    }
   }
 
   /**
@@ -410,6 +626,79 @@ export class DeploymentService {
     }
 
     logger.warn(`${project.name} started but may not be fully ready`);
+  }
+
+  /**
+   * Rebuild an existing project
+   */
+  async rebuildProject(projectId: string): Promise<ProjectConfig> {
+    const project = await projectRegistry.getById(projectId);
+    if (!project) {
+      throw new AppError('Project not found', 404);
+    }
+
+    // Static projects cannot be rebuilt
+    if (project.type === 'static') {
+      throw new AppError('Static projects cannot be rebuilt', 400);
+    }
+
+    const projectDir = path.join(APPS_DIR, projectId);
+    if (!await fs.pathExists(projectDir)) {
+      throw new AppError('Project directory not found', 404);
+    }
+
+    logger.info(`Rebuilding project ${project.name} (${projectId})`);
+
+    try {
+      // 1. Build the project
+      await this.buildProject(
+        projectDir,
+        project.pkgManager,
+        projectId,
+        project.name,
+        project.type
+      );
+      logger.info('✅ Rebuild completed');
+
+      // 2. Verify build output
+      if (project.type === 'react' || project.type === 'next') {
+        await BuildDetector.verifyBuildOutput(projectDir, project.type);
+      }
+
+      // 3. Restart PM2 process for Node/Next projects
+      if (project.type === 'node' || project.type === 'next') {
+        await pm2Service.restartProject(projectId);
+        logger.info('PM2 process restarted');
+        await this.waitForProcessStart(project);
+      }
+
+      // 4. Update Caddy config (in case paths changed)
+      await caddyConfigManager.updateProjectConfig(project);
+      logger.info('✅ Caddy config updated');
+
+      // 5. Log activity
+      await activityLogger.log('deploy', project.name,
+        `Rebuilt ${project.name} successfully`);
+
+      // 6. Emit event for realtime updates
+      eventBus.emitEvent('project:change', {
+        action: 'updated',
+        projectId,
+        project
+      });
+
+      return project;
+    } catch (error: any) {
+      logger.error('Rebuild failed', {
+        error: error.message,
+        stack: error.stack
+      });
+
+      await activityLogger.log('error', project.name,
+        `Rebuild failed: ${error.message}`);
+
+      throw error;
+    }
   }
 }
 

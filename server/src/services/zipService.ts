@@ -1,4 +1,5 @@
 import fs from 'fs';
+import fsPromises from 'fs/promises';
 import path from 'path';
 import yauzl from 'yauzl';
 import { Transform } from 'stream';
@@ -101,3 +102,80 @@ export const extractZip = (zipFilePath: string, destDir: string): Promise<ZipExt
     });
   });
 };
+
+/**
+ * Find the project root inside an extracted directory
+ * Handles cases where zip contains a single nested folder (e.g., zip -r project.zip my-app/)
+ */
+export async function findProjectRoot(extractedPath: string): Promise<string> {
+  // Check if package.json or index.html exists at root
+  const packageJsonPath = path.join(extractedPath, 'package.json');
+  const indexHtmlPath = path.join(extractedPath, 'index.html');
+
+  try {
+    await fsPromises.access(packageJsonPath);
+    return extractedPath; // package.json at root - OK
+  } catch {
+    // package.json not at root, continue checking
+  }
+
+  try {
+    await fsPromises.access(indexHtmlPath);
+    return extractedPath; // index.html at root - OK (static site)
+  } catch {
+    // index.html not at root, continue checking
+  }
+
+  // Look for a single subdirectory containing the project
+  const entries = await fsPromises.readdir(extractedPath);
+  const subdirs: string[] = [];
+
+  for (const entry of entries) {
+    // Skip hidden files and macOS resource fork directory
+    if (entry.startsWith('.') || entry === '__MACOSX') {
+      continue;
+    }
+
+    const entryPath = path.join(extractedPath, entry);
+    try {
+      const stat = await fsPromises.stat(entryPath);
+      if (stat.isDirectory()) {
+        subdirs.push(entry);
+      }
+    } catch {
+      // Skip entries we can't stat
+    }
+  }
+
+  // If exactly one subdirectory, check if it contains the project
+  if (subdirs.length === 1) {
+    const nestedPath = path.join(extractedPath, subdirs[0]);
+    const nestedPackageJson = path.join(nestedPath, 'package.json');
+    const nestedIndexHtml = path.join(nestedPath, 'index.html');
+
+    let hasPackage = false;
+    let hasIndex = false;
+
+    try {
+      await fsPromises.access(nestedPackageJson);
+      hasPackage = true;
+    } catch {
+      // No package.json in nested dir
+    }
+
+    try {
+      await fsPromises.access(nestedIndexHtml);
+      hasIndex = true;
+    } catch {
+      // No index.html in nested dir
+    }
+
+    if (hasPackage || hasIndex) {
+      logger.info(`Found project in nested directory: ${subdirs[0]}/`);
+      return nestedPath;
+    }
+  }
+
+  // Return original path, let caller handle the error
+  return extractedPath;
+}

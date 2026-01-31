@@ -1,10 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Upload, X, Check, XCircle, RefreshCw } from 'lucide-react';
+import { Upload, X, Check, XCircle, RefreshCw, FileSearch, Loader2, AlertTriangle } from 'lucide-react';
 import { useDeployFlow } from '@/hooks/useDeployFlow';
 import { ProjectType } from '@runway/shared';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { analyzeProject as analyzeProjectApi, DeployAnalysis } from '@/lib/api';
+import { WarningsList } from '@/components/runway/WarningsList';
 
 interface UpdateProjectModalProps {
     project: {
@@ -19,12 +21,22 @@ export function UpdateProjectModal({ project, isOpen, onClose }: UpdateProjectMo
     const { state, isDeploying, startDeploy, confirmConfig, reset } = useDeployFlow();
     const [file, setFile] = useState<File | null>(null);
     const [isDragOver, setIsDragOver] = useState(false);
+    const [analysis, setAnalysis] = useState<DeployAnalysis | null>(null);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+    const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+    const [step, setStep] = useState<'upload' | 'analyze' | 'deploy'>('upload');
+    const [confirmServerBuild, setConfirmServerBuild] = useState(false);
 
     // Reset internal state when modal opens
     React.useEffect(() => {
         if (isOpen) {
             reset();
             setFile(null);
+            setAnalysis(null);
+            setIsAnalyzing(false);
+            setAnalyzeError(null);
+            setStep('upload');
+            setConfirmServerBuild(false);
         }
     }, [isOpen, reset]);
 
@@ -46,23 +58,55 @@ export function UpdateProjectModal({ project, isOpen, onClose }: UpdateProjectMo
         }
     };
 
+    const handleAnalyze = async () => {
+        if (!file) return;
+
+        setIsAnalyzing(true);
+        setAnalyzeError(null);
+        setStep('analyze');
+
+        try {
+            const result = await analyzeProjectApi(file, project.type);
+            setAnalysis(result);
+
+            // If no confirmation required, auto-proceed to deploy
+            if (!result.requiresConfirmation) {
+                await handleDeploy();
+            }
+        } catch (error: any) {
+            const errorMsg = error.response?.data?.error || error.message || 'Analysis failed';
+            setAnalyzeError(errorMsg);
+            toast.error(errorMsg);
+        } finally {
+            setIsAnalyzing(false);
+        }
+    };
+
     const handleDeploy = async () => {
         if (!file) return;
 
-        // Start deployment immediately
-        // We pass the EXISTING project name and runtime.
-        // Mode 'update' ensures backend safety.
-        startDeploy(file, {
-            name: project.name,
-            runtime: project.type, // 'type' maps to 'runtime' in config 
-            mode: 'update'
-        });
+        setStep('deploy');
 
-        await confirmConfig({
+        // Pass all required data directly to confirmConfig
+        // startDeploy sets state but state updates are async, so we can't rely on deployConfig
+        // Instead, pass the file directly in configOverride
+        startDeploy(file, {
             name: project.name,
             runtime: project.type,
             mode: 'update'
         });
+
+        await confirmConfig({
+            file,  // Pass file directly - don't rely on async state
+            name: project.name,
+            runtime: project.type,
+            mode: 'update'
+        });
+    };
+
+    const handleConfirmAndDeploy = async () => {
+        setConfirmServerBuild(true);
+        await handleDeploy();
     };
 
     return (
@@ -97,7 +141,7 @@ export function UpdateProjectModal({ project, isOpen, onClose }: UpdateProjectMo
 
                         <div className="p-6">
                             {/* Upload State */}
-                            {!isDeploying && state.step === 'upload' && (
+                            {!isDeploying && step === 'upload' && (
                                 <div className="space-y-6">
                                     <div
                                         onDrop={handleDrop}
@@ -149,18 +193,97 @@ export function UpdateProjectModal({ project, isOpen, onClose }: UpdateProjectMo
 
                                     <div className="flex justify-end">
                                         <button
-                                            onClick={handleDeploy}
+                                            onClick={handleAnalyze}
                                             disabled={!file}
                                             className="px-6 py-2 rounded-pill bg-neon text-primary-foreground font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-neon/90"
                                         >
-                                            Deploy Update
+                                            Analyze & Deploy
                                         </button>
                                     </div>
                                 </div>
                             )}
 
+                            {/* Analyze State */}
+                            {step === 'analyze' && !isDeploying && (
+                                <div className="space-y-6">
+                                    {isAnalyzing ? (
+                                        <div className="flex flex-col items-center justify-center py-8">
+                                            <div className="w-12 h-12 rounded-pill bg-zinc-800 flex items-center justify-center mb-4">
+                                                <FileSearch className="w-6 h-6 text-neon animate-pulse" />
+                                            </div>
+                                            <p className="text-zinc-400">Analyzing your project...</p>
+                                        </div>
+                                    ) : analyzeError ? (
+                                        <div className="space-y-4">
+                                            <div className="bg-red-500/10 border border-red-500/30 rounded-inner p-4">
+                                                <div className="flex items-start gap-3">
+                                                    <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                                                    <div>
+                                                        <p className="font-medium text-red-400">Analysis Failed</p>
+                                                        <p className="text-sm text-zinc-400 mt-1">{analyzeError}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="flex justify-end">
+                                                <button
+                                                    onClick={() => { setStep('upload'); setAnalyzeError(null); }}
+                                                    className="px-4 py-2 rounded-pill bg-zinc-800 text-white hover:bg-zinc-700"
+                                                >
+                                                    Try Again
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : analysis && analysis.requiresConfirmation ? (
+                                        <div className="space-y-6">
+                                            {/* Detection Results */}
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="bg-zinc-800/50 p-3 rounded-inner border border-zinc-700">
+                                                    <p className="text-zinc-500 text-xs mb-1">Project Type</p>
+                                                    <p className="text-foreground font-medium capitalize text-sm">{analysis.declaredType}</p>
+                                                </div>
+                                                <div className="bg-zinc-800/50 p-3 rounded-inner border border-zinc-700">
+                                                    <p className="text-zinc-500 text-xs mb-1">Strategy</p>
+                                                    <p className="text-foreground font-medium capitalize text-sm">{analysis.strategy.replace(/-/g, ' ')}</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Warnings */}
+                                            {analysis.warnings && analysis.warnings.length > 0 && (
+                                                <WarningsList warnings={analysis.warnings} />
+                                            )}
+
+                                            {/* Confirmation Required */}
+                                            <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-inner p-4">
+                                                <div className="flex items-start gap-3">
+                                                    <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                                                    <div>
+                                                        <p className="font-medium text-yellow-400">Confirmation Required</p>
+                                                        <p className="text-sm text-zinc-400 mt-1">{analysis.confirmationReason || 'Server-side build requires confirmation'}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex justify-end gap-3">
+                                                <button
+                                                    onClick={() => { setStep('upload'); setAnalysis(null); }}
+                                                    className="px-4 py-2 rounded-pill border border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    onClick={handleConfirmAndDeploy}
+                                                    className="px-6 py-2 rounded-pill bg-neon text-primary-foreground font-medium hover:bg-neon/90"
+                                                >
+                                                    Confirm & Deploy
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ) : null}
+                                </div>
+                            )}
+
                             {/* Validation/Processing State */}
-                            {(isDeploying || state.step === 'build' || state.step === 'deploy' || state.step === 'configure') && (
+                            {(isDeploying || step === 'deploy' || state.step === 'build' || state.step === 'deploy' || state.step === 'configure') && (
                                 <div className="space-y-6">
                                     <div className="flex items-center justify-between">
                                         <h3 className="font-medium text-foreground">

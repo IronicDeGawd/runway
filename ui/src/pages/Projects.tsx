@@ -14,13 +14,14 @@ import {
   Filter,
   FilePlus,
   UploadCloud,
+  Hammer,
 } from "lucide-react";
 import { getProjectUrl } from '@/utils/url';
 import { UpdateProjectModal } from "@/components/UpdateProjectModal";
 
 export default function ProjectsPage() {
   const navigate = useNavigate();
-  const { projects, startProject, stopProject, deleteProject } = useProjects();
+  const { projects, startProject, stopProject, deleteProject, rebuildProject } = useProjects();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "running" | "stopped" | "building">("all");
 
@@ -75,13 +76,21 @@ export default function ProjectsPage() {
     switch (runtime) {
       case "react":
         return "React";
+      case "next":
       case "nextjs":
         return "Next.js";
+      case "node":
       case "nodejs":
         return "Node.js";
+      case "static":
+        return "Static";
       default:
         return runtime;
     }
+  };
+
+  const isStaticRuntime = (runtime: string) => {
+    return runtime === 'react' || runtime === 'static';
   };
 
   return (
@@ -293,7 +302,7 @@ export default function ProjectsPage() {
                     <div className="bg-zinc-800/50 p-4 rounded-card flex justify-between items-end border border-zinc-800">
                       <span className="text-zinc-400 text-sm">CPU Usage</span>
                       <span className="text-white text-lg font-light">
-                        {selectedProject.runtime === 'react' ? (
+                        {isStaticRuntime(selectedProject.runtime) ? (
                           <span className="text-zinc-500 text-sm" title="Static site served directly via Caddy">N/A</span>
                         ) : (
                           `${selectedProject.cpu || 0}%`
@@ -303,7 +312,7 @@ export default function ProjectsPage() {
                     <div className="bg-zinc-800/50 p-4 rounded-card flex justify-between items-end border border-zinc-800">
                       <span className="text-zinc-400 text-sm">Memory</span>
                       <span className="text-white text-lg font-light">
-                        {selectedProject.runtime === 'react' ? (
+                        {isStaticRuntime(selectedProject.runtime) ? (
                           <span className="text-zinc-500 text-sm" title="Static site served directly via Caddy">N/A</span>
                         ) : (
                           `${selectedProject.memory || 0} MB`
@@ -342,6 +351,21 @@ export default function ProjectsPage() {
                       >
                         <UploadCloud className="w-5 h-5" />
                       </button>
+                      {/* Rebuild button - only for non-static projects */}
+                      {selectedProject.runtime !== 'static' && selectedProject.runtime !== 'react' && (
+                        <button
+                          onClick={() => rebuildProject(selectedProject.id)}
+                          disabled={selectedProject.status === 'building'}
+                          className={`p-3 rounded-pill border border-zinc-700 text-zinc-400 font-medium transition-colors ${
+                            selectedProject.status === 'building'
+                              ? 'opacity-50 cursor-not-allowed'
+                              : 'hover:bg-zinc-800'
+                          }`}
+                          title="Rebuild Project"
+                        >
+                          <Hammer className="w-5 h-5" />
+                        </button>
+                      )}
                       {selectedProject.status === "running" ? (
                         <button
                           onClick={() => stopProject(selectedProject.id)}

@@ -1,0 +1,49 @@
+#!/usr/bin/env node
+
+import { Command } from 'commander';
+import { initCommand } from './commands/init';
+import { deployCommand } from './commands/deploy';
+import { listCommand } from './commands/list';
+import { statusCommand } from './commands/status';
+
+const program = new Command();
+
+program
+  .name('runway')
+  .description('CLI tool for deploying projects to Runway')
+  .version('0.0.1');
+
+// Init command
+program
+  .command('init')
+  .description('Configure the Runway CLI')
+  .option('-s, --server <url>', 'Server URL')
+  .action(initCommand);
+
+// Deploy command
+program
+  .command('deploy')
+  .description('Deploy the current project')
+  .option('-n, --name <name>', 'Project name')
+  .option('-t, --type <type>', 'Project type (react, next, node)')
+  .option('-v, --version <version>', 'Version string')
+  .option('--build-local', 'Build locally before uploading (default)')
+  .option('--build-server', 'Upload source and build on server')
+  .option('-e, --env-file <path>', 'Path to environment file')
+  .action(deployCommand);
+
+// List command
+program
+  .command('list')
+  .alias('ls')
+  .description('List deployed projects')
+  .action(listCommand);
+
+// Status command
+program
+  .command('status <project>')
+  .description('Get status of a deployed project')
+  .action(statusCommand);
+
+// Parse command line arguments
+program.parse();

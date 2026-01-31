@@ -176,13 +176,36 @@ ${projectSection}
     let config = '';
     const projectDir = path.join(APPS_DIR, project.id);
 
+    // Helper to check if project serves static files
+    // Also check for serveDir which indicates Next.js static export or explicit static serve
+    const projectWithServeDir = project as ProjectConfig & { serveDir?: string };
+    const hasServeDir = !!projectWithServeDir.serveDir;
+    const isStaticProject = project.type === 'react' || project.type === 'static' || hasServeDir;
+
+    // Determine the build/serve path
+    const getBuildPath = async (): Promise<string | null> => {
+      // If explicit serveDir is set (e.g., 'out' for Next.js static export)
+      if (hasServeDir) {
+        return path.join(projectDir, projectWithServeDir.serveDir!);
+      }
+      // Static sites serve from project root
+      if (project.type === 'static') {
+        return projectDir;
+      }
+      // React serves from detected build output (dist/ or build/)
+      if (project.type === 'react') {
+        return BuildDetector.detectBuildOutput(projectDir, project.type);
+      }
+      return null;
+    };
+
     // 1. Domain-based configuration (if domains are configured)
     if (project.domains && project.domains.length > 0) {
       for (const domain of project.domains) {
-        if (project.type === 'react') {
+        if (isStaticProject) {
           // Static site - serve files directly
-          const buildPath = await BuildDetector.detectBuildOutput(projectDir, project.type);
-          
+          const buildPath = await getBuildPath();
+
           if (buildPath) {
             config += `
 # Domain: ${domain}
@@ -190,10 +213,10 @@ ${domain} {
   root * ${buildPath}
   file_server
   try_files {path} /index.html
-  
+
   # Enable compression
   encode gzip
-  
+
   # Auto HTTPS (use 'tls internal' for local dev)
   tls internal
 }
@@ -205,10 +228,10 @@ ${domain} {
 # Domain: ${domain}
 ${domain} {
   reverse_proxy 127.0.0.1:${project.port}
-  
+
   # Enable compression
   encode gzip
-  
+
   # Auto HTTPS
   tls internal
 }
@@ -220,10 +243,10 @@ ${domain} {
     // 2. Path-based routing (always available, for IP access)
     // Generate config snippet that will be embedded in the main :80 block
     const projectPath = `/app/${project.name.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
-    
-    if (project.type === 'react') {
-      const buildPath = await BuildDetector.detectBuildOutput(projectDir, project.type);
-      
+
+    if (isStaticProject) {
+      const buildPath = await getBuildPath();
+
       if (buildPath) {
         config += `handle_path ${projectPath}* {
     root * ${buildPath}

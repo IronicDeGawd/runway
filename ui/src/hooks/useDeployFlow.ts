@@ -1,8 +1,9 @@
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { analyzeProject as analyzeProjectApi, DeployAnalysis, DeployWarning } from "@/lib/api";
 
-export type DeployStep = "upload" | "configure" | "build" | "deploy" | "complete";
+export type DeployStep = "upload" | "configure" | "analyze" | "build" | "deploy" | "complete";
 
 export interface DeployState {
   step: DeployStep;
@@ -10,6 +11,12 @@ export interface DeployState {
   logs: string[];
   error?: string;
   deployedProject?: any;
+  // Analysis state
+  analysis?: DeployAnalysis;
+  isAnalyzing?: boolean;
+  requiresConfirmation?: boolean;
+  confirmationReason?: string;
+  confirmServerBuild?: boolean;
 }
 
 // Helper to convert File to base64
@@ -46,10 +53,50 @@ export function useDeployFlow() {
     }
     console.log('Setting deploy config and moving to configure step');
     setDeployConfig({ file, ...config });
-    
+
     // Move to configure step immediately - no need for fake upload progress
-    setState({ step: "configure", progress: 100, logs: [] });
+    setState({ step: "configure", progress: 100, logs: [], analysis: undefined, requiresConfirmation: false });
     console.log('State updated to configure step');
+  }, []);
+
+  // Analyze the project before deployment
+  const analyzeProject = React.useCallback(async (file: File, declaredType?: string): Promise<DeployAnalysis | null> => {
+    setState(prev => ({ ...prev, isAnalyzing: true, step: 'analyze', progress: 0, logs: ['Analyzing project...'] }));
+
+    try {
+      const analysis = await analyzeProjectApi(file, declaredType);
+
+      setState(prev => ({
+        ...prev,
+        analysis,
+        isAnalyzing: false,
+        progress: 100,
+        logs: [...prev.logs, 'Analysis complete'],
+        requiresConfirmation: analysis.requiresConfirmation,
+        confirmationReason: analysis.confirmationReason,
+      }));
+
+      return analysis;
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || error.message || 'Analysis failed';
+      setState(prev => ({
+        ...prev,
+        isAnalyzing: false,
+        error: errorMsg,
+        logs: [...prev.logs, `Error: ${errorMsg}`],
+      }));
+      toast.error(errorMsg);
+      return null;
+    }
+  }, []);
+
+  // User confirms they want to proceed with server-side build
+  const confirmBuild = React.useCallback(() => {
+    setState(prev => ({
+      ...prev,
+      requiresConfirmation: false,
+      confirmServerBuild: true,
+    }));
   }, []);
 
   const confirmConfig = React.useCallback(async (configOverride?: { file?: File, name?: string, runtime?: string, mode?: 'create' | 'update' }) => {
@@ -93,7 +140,8 @@ export function useDeployFlow() {
             name: finalConfig.name,
             type: finalConfig.runtime,
             deploymentId,
-            mode: finalConfig.mode
+            mode: finalConfig.mode,
+            confirmServerBuild: state.confirmServerBuild || false,
           }
         }));
       };
@@ -231,7 +279,17 @@ export function useDeployFlow() {
       wsRef.current.close();
       wsRef.current = null;
     }
-    setState({ step: "upload", progress: 0, logs: [], error: undefined });
+    setState({
+      step: "upload",
+      progress: 0,
+      logs: [],
+      error: undefined,
+      analysis: undefined,
+      isAnalyzing: false,
+      requiresConfirmation: false,
+      confirmationReason: undefined,
+      confirmServerBuild: false,
+    });
     setIsDeploying(false);
     setDeployConfig(null);
   }, []);
@@ -249,5 +307,5 @@ export function useDeployFlow() {
     setState((prev) => ({ ...prev, step }));
   }, []);
 
-  return { state, isDeploying, startDeploy, confirmConfig, reset, setStep };
+  return { state, isDeploying, startDeploy, confirmConfig, reset, setStep, analyzeProject, confirmBuild };
 }

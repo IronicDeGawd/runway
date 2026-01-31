@@ -21,6 +21,7 @@ import { useProjectEnv } from "@/hooks/useProjectEnv";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
+import { getProjectUrl } from "@/utils/url";
 
 export default function ProjectDetailsPage() {
   const { id } = useParams<{ id: string }>();
@@ -189,12 +190,12 @@ export default function ProjectDetailsPage() {
                   <div className="flex justify-between items-center p-3 bg-zinc-50 rounded-element border border-zinc-200">
                     <span className="text-sm text-zinc-600">Domain</span>
                     <a
-                      href={`http://${project.domain}`}
+                      href={getProjectUrl(project)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-sm text-zinc-700 hover:text-panel-foreground flex items-center gap-1"
                     >
-                      {project.domain}
+                      {getProjectUrl(project).replace(/^https?:\/\//, '')}
                       <ExternalLink className="w-3 h-3" />
                     </a>
                   </div>

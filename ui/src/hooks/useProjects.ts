@@ -4,6 +4,7 @@ import { api, ProjectsResponse, ProcessStatus } from '@/lib/api';
 import { ProjectConfig, ProjectType, ProcessStatus as SharedProcessStatus } from '@runway/shared';
 import { toast } from 'sonner';
 import { useWebSocket } from '@/contexts/WebSocketContext';
+import { sanitizeProjectName } from '@/utils/url';
 
 // Extended Project interface with runtime status
 export interface Project extends Omit<ProjectConfig, 'createdAt'> {
@@ -76,7 +77,7 @@ export function useProjects() {
 
         // Get server IP from window location
         const serverHost = window.location.hostname;
-        const projectPath = `/app/${p.name}`;
+        const projectPath = `/app/${sanitizeProjectName(p.name)}`;
         
         return {
             ...p,
@@ -138,6 +139,21 @@ export function useProjects() {
         onError: () => toast.error('Failed to delete project'),
     });
 
+    const rebuildMutation = useMutation({
+        mutationFn: async (id: string) => {
+            await api.post(`/project/${id}/rebuild`);
+        },
+        onSuccess: () => {
+            toast.success('Rebuild started');
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
+            queryClient.invalidateQueries({ queryKey: ['processes'] });
+        },
+        onError: (error: any) => {
+            const errorMsg = error.response?.data?.error || 'Rebuild failed';
+            toast.error(errorMsg);
+        },
+    });
+
     return {
         projects,
         isLoading: projectsLoading,
@@ -145,6 +161,7 @@ export function useProjects() {
         stopProject: (id: string) => stopMutation.mutateAsync(id),
         restartProject: (id: string) => restartMutation.mutateAsync(id),
         deleteProject: (id: string) => deleteMutation.mutateAsync(id),
+        rebuildProject: (id: string) => rebuildMutation.mutateAsync(id),
         getProject,
     };
 }

@@ -12,20 +12,37 @@ import { eventBus } from '../events/eventBus';
 const APPS_DIR = path.resolve(process.cwd(), '../apps');
 
 export class PM2Service {
-  
+  // Track connection state to prevent race conditions
+  private connected = false;
+
   // Private helpers to wrap PM2 callbacks in Promises correctly
-  
-  private connect(): Promise<void> {
+
+  private async connect(): Promise<void> {
+    // Skip if already connected to prevent overlapping connections
+    if (this.connected) {
+      return;
+    }
+
     return new Promise((resolve, reject) => {
       pm2.connect((err: any) => {
         if (err) return reject(err);
+        this.connected = true;
         resolve();
       });
     });
   }
 
-  private disconnect(): void {
+  private async disconnect(): Promise<void> {
+    // Skip if not connected
+    if (!this.connected) {
+      return;
+    }
+
     pm2.disconnect();
+    this.connected = false;
+
+    // Small delay to ensure cleanup completes before next connection
+    await new Promise(resolve => setTimeout(resolve, 50));
   }
 
   private list(): Promise<any[]> {
@@ -104,16 +121,27 @@ export class PM2Service {
         NODE_ENV: 'production',
         ...envVars,
       },
-      // Logs
+      // Logs with rotation to prevent disk exhaustion
       output: path.join(projectDir, 'logs', 'out.log'),
       error: path.join(projectDir, 'logs', 'error.log'),
       merge_logs: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      // PM2 log rotation settings (requires pm2-logrotate module)
+      // These settings are used if pm2-logrotate is installed
+      max_size: '10M',    // Rotate when file exceeds 10MB
+      retain: 5,          // Keep only 5 rotated files
+      compress: true,     // Compress rotated files
+      // Memory and restart limits
+      max_memory_restart: '500M',  // Restart if memory exceeds 500MB
+      max_restarts: 10,            // Allow more restarts before giving up
+      min_uptime: '10s',           // Min uptime to consider "successfully started"
+      restart_delay: 5000,         // Wait 5 seconds between restarts
     };
   }
 
   async startProject(project: ProjectConfig): Promise<void> {
-    if (project.type === 'react') {
-      logger.info(`Skipping PM2 start for static React project ${project.name}`);
+    if (project.type === 'react' || project.type === 'static') {
+      logger.info(`Skipping PM2 start for static project ${project.name}`);
       return;
     }
 
@@ -156,7 +184,7 @@ export class PM2Service {
       
       throw new AppError(`Failed to start process: ${error}`, 500);
     } finally {
-      this.disconnect();
+      await this.disconnect();
     }
   }
 
@@ -180,7 +208,7 @@ export class PM2Service {
       // Ignore if not found
       logger.warn(`Failed to stop ${projectId}`, error);
     } finally {
-      this.disconnect();
+      await this.disconnect();
     }
   }
 
@@ -205,7 +233,7 @@ export class PM2Service {
       
       throw new AppError('Failed to restart process', 500);
     } finally {
-      this.disconnect();
+      await this.disconnect();
     }
   }
 
@@ -223,7 +251,7 @@ export class PM2Service {
     } catch (error) {
       logger.warn(`Failed to delete process ${projectId}`, error);
     } finally {
-      this.disconnect();
+      await this.disconnect();
     }
   }
 
@@ -243,36 +271,48 @@ export class PM2Service {
       logger.error('Failed to list processes:', error?.message || error);
       return [];
     } finally {
-      this.disconnect();
+      await this.disconnect();
     }
   }
 
   async reconcile(projects: ProjectConfig[]): Promise<void> {
     logger.info('Reconciling PM2 processes...');
+
+    // Collect projects that need to be started
+    const projectsToStart: ProjectConfig[] = [];
+
     try {
       await this.connect();
       const list = await this.list();
-      
+
       for (const project of projects) {
-        if (project.type === 'react') continue;
+        if (project.type === 'react' || project.type === 'static') continue;
 
         const running = list.find((p: any) => p.name === project.id);
         if (!running) {
-          logger.info(`Reviving process for ${project.name}`);
-          // Note: startProject maintains its own connection cycle, so we shouldn't use it here if we want to stay connected.
-          // However, since we're iterating and startProject is complex (logging/events), let's just use it and accept the re-connection overhead for now.
-          // A better approach would be to extract the logic, but this is safer refactor-wise.
-          // Ideally we should call this.start(config) here but we need to generate config first.
-          
-          this.disconnect(); // Disconnect current connection before calling startProject which makes a new one
-          await this.startProject(project); 
-          await this.connect(); // Reconnect for next iteration
+          logger.info(`Will revive process for ${project.name}`);
+          projectsToStart.push(project);
         }
       }
     } catch (error: any) {
-      logger.error('Reconciliation failed:', error?.message || error);
+      logger.error('Reconciliation check failed:', error?.message || error);
     } finally {
-      this.disconnect();
+      await this.disconnect();
+    }
+
+    // Start projects sequentially outside of the main connection
+    // This avoids the disconnect/reconnect churn inside the loop
+    for (const project of projectsToStart) {
+      try {
+        logger.info(`Reviving process for ${project.name}`);
+        await this.startProject(project);
+      } catch (error: any) {
+        logger.error(`Failed to revive ${project.name}:`, error?.message || error);
+      }
+    }
+
+    if (projectsToStart.length > 0) {
+      logger.info(`Reconciliation complete: ${projectsToStart.length} processes revived`);
     }
   }
 }

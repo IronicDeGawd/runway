@@ -5,6 +5,7 @@ import { Play, Square, RotateCw, ExternalLink, MoreVertical } from "lucide-react
 import { StatusPill, RuntimeBadge } from "./StatusPill";
 import { Link } from "react-router-dom";
 import type { Project } from "@/hooks/useProjects";
+import { getProjectUrl } from "@/utils/url";
 
 interface ProjectRowProps {
   project: Project;
@@ -88,7 +89,7 @@ export function ProjectRow({
         <ActionButton
           icon={ExternalLink}
           label="Open"
-          onClick={() => window.open(`https://${project.domain}`, "_blank")}
+          onClick={() => window.open(getProjectUrl(project), "_blank")}
           className="text-text-secondary hover:text-text-primary hover:bg-[hsl(0_0%_100%/0.05)]"
         />
         <ActionButton

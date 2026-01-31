@@ -1,31 +1,35 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { Upload, Check, ArrowRight, ArrowLeft, RefreshCw, XCircle } from 'lucide-react';
+import { Upload, Check, ArrowRight, ArrowLeft, RefreshCw, XCircle, Loader2, FileSearch, AlertTriangle, Globe } from 'lucide-react';
 import { useDeployFlow } from '@/hooks/useDeployFlow';
 import { useProjects } from '@/hooks/useProjects';
 import { RiReactjsFill, RiNextjsFill } from "react-icons/ri";
 import { FaNodeJs } from "react-icons/fa";
 import { getProjectUrl } from '@/utils/url';
+import { WarningsList } from '@/components/runway/WarningsList';
 
 const steps = [
   { id: 'upload', label: 'Upload' },
   { id: 'configure', label: 'Configure' },
+  { id: 'analyze', label: 'Analyze' },
   { id: 'build', label: 'Build' },
   { id: 'deploy', label: 'Deploy' },
 ] as const;
 
 const runtimes = [
   { id: 'react', label: 'React', icon: <RiReactjsFill className="w-8 h-8" /> },
-  { id: 'nextjs', label: 'Next.js', icon: <RiNextjsFill className="w-8 h-8" /> },
-  { id: 'nodejs', label: 'Node.js', icon: <FaNodeJs className="w-8 h-8" /> },
+  { id: 'next', label: 'Next.js', icon: <RiNextjsFill className="w-8 h-8" /> },
+  { id: 'node', label: 'Node.js', icon: <FaNodeJs className="w-8 h-8" /> },
+  { id: 'static', label: 'Static', icon: <Globe className="w-8 h-8" /> },
 ];
 
 export default function DeployPage() {
   const navigate = useNavigate();
   // Destructure state and handlers from the hook
-  const { state, isDeploying, startDeploy, confirmConfig, reset, setStep } = useDeployFlow();
+  const { state, isDeploying, startDeploy, confirmConfig, reset, setStep, analyzeProject, confirmBuild } = useDeployFlow();
   const { projects } = useProjects();
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   // Local state for form inputs
   const [projectName, setProjectName] = useState('');
@@ -74,7 +78,17 @@ export default function DeployPage() {
         return;
       }
 
-      // Confirm configuration and start actual build
+      // Analyze the project first
+      if (file) {
+        await analyzeProject(file, selectedRuntime);
+      }
+    } else if (state.step === 'analyze') {
+      // If confirmation is required and not yet confirmed, show dialog
+      if (state.requiresConfirmation && !state.confirmServerBuild) {
+        setShowConfirmDialog(true);
+        return;
+      }
+      // Proceed to build
       await handleConfigureContinue();
     }
   };
@@ -83,6 +97,8 @@ export default function DeployPage() {
     if (state.step === 'configure') {
       setStep('upload');
       setFile(null); // Optional: clear file if going back
+    } else if (state.step === 'analyze') {
+      setStep('configure');
     } else if (state.step === 'build') {
       // Warn/Prevent going back during build? For now allow reset
       if (confirm('Cancel deployment?')) {
@@ -105,6 +121,8 @@ export default function DeployPage() {
         return file !== null;
       case 'configure':
         return projectName.length > 0;
+      case 'analyze':
+        return state.analysis && !state.isAnalyzing;
       case 'build':
         return false; // Auto-proceeds or waits
       case 'deploy':
@@ -260,6 +278,94 @@ export default function DeployPage() {
             </div>
           )}
 
+          {state.step === 'analyze' && (
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-foreground">Project Analysis</h2>
+                {state.isAnalyzing && (
+                  <div className="flex items-center gap-2 text-zinc-400">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-sm">Analyzing...</span>
+                  </div>
+                )}
+              </div>
+
+              {state.isAnalyzing ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="w-16 h-16 rounded-pill bg-zinc-800 flex items-center justify-center mb-4">
+                    <FileSearch className="w-8 h-8 text-neon animate-pulse" />
+                  </div>
+                  <p className="text-zinc-400">Analyzing your project...</p>
+                </div>
+              ) : state.analysis ? (
+                <div className="space-y-6">
+                  {/* Detection Results */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-zinc-800/50 p-4 rounded-inner border border-zinc-700">
+                      <p className="text-zinc-500 text-sm mb-1">Project Type</p>
+                      <p className="text-foreground font-medium capitalize">{state.analysis.declaredType}</p>
+                    </div>
+                    <div className="bg-zinc-800/50 p-4 rounded-inner border border-zinc-700">
+                      <p className="text-zinc-500 text-sm mb-1">Strategy</p>
+                      <p className="text-foreground font-medium capitalize">{state.analysis.strategy.replace(/-/g, ' ')}</p>
+                    </div>
+                    <div className="bg-zinc-800/50 p-4 rounded-inner border border-zinc-700">
+                      <p className="text-zinc-500 text-sm mb-1">Build Required</p>
+                      <p className={`font-medium ${state.analysis.requiresBuild ? 'text-yellow-400' : 'text-status-success'}`}>
+                        {state.analysis.requiresBuild ? 'Yes' : 'No'}
+                      </p>
+                    </div>
+                    <div className="bg-zinc-800/50 p-4 rounded-inner border border-zinc-700">
+                      <p className="text-zinc-500 text-sm mb-1">Serve Method</p>
+                      <p className="text-foreground font-medium">{state.analysis.serveMethod === 'caddy-static' ? 'Static Files' : 'PM2 Proxy'}</p>
+                    </div>
+                  </div>
+
+                  {/* Warnings */}
+                  {state.analysis.warnings && state.analysis.warnings.length > 0 && (
+                    <div className="space-y-3">
+                      <h3 className="text-sm font-medium text-zinc-400">Warnings & Information</h3>
+                      <WarningsList warnings={state.analysis.warnings} />
+                    </div>
+                  )}
+
+                  {/* Confirmation Required Notice */}
+                  {state.requiresConfirmation && !state.confirmServerBuild && (
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-inner p-4">
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-medium text-yellow-400">Confirmation Required</p>
+                          <p className="text-sm text-zinc-400 mt-1">{state.confirmationReason || 'Server-side build requires confirmation'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Confirmed Notice */}
+                  {state.confirmServerBuild && (
+                    <div className="bg-status-success/10 border border-status-success/30 rounded-inner p-4">
+                      <div className="flex items-center gap-3">
+                        <Check className="w-5 h-5 text-status-success" />
+                        <p className="text-status-success font-medium">Server-side build confirmed - ready to proceed</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : state.error ? (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-inner p-4">
+                  <div className="flex items-start gap-3">
+                    <XCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-medium text-red-400">Analysis Failed</p>
+                      <p className="text-sm text-zinc-400 mt-1">{state.error}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          )}
+
           {(state.step === 'build' || state.step === 'deploy') && (
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -342,7 +448,7 @@ export default function DeployPage() {
         </div>
 
         {/* Navigation Buttons */}
-        {(state.step === 'upload' || state.step === 'configure') && (
+        {(state.step === 'upload' || state.step === 'configure' || state.step === 'analyze') && (
           <div className="flex justify-between">
             <button
               onClick={prevStep}
@@ -355,18 +461,82 @@ export default function DeployPage() {
             </button>
             <button
               onClick={nextStep}
-              disabled={!canProceed() || isDeploying}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-pill font-semibold transition-colors ${canProceed() && !isDeploying
+              disabled={!canProceed() || isDeploying || state.isAnalyzing}
+              className={`flex items-center space-x-2 px-6 py-3 rounded-pill font-semibold transition-colors ${canProceed() && !isDeploying && !state.isAnalyzing
                 ? 'bg-neon text-primary-foreground hover:bg-neon-hover'
                 : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
                 }`}
             >
-              <span>{state.step === 'configure' ? 'Start Deployment' : 'Continue'}</span>
-              <ArrowRight className="h-4 w-4" />
+              {state.isAnalyzing ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Analyzing...</span>
+                </>
+              ) : (
+                <>
+                  <span>
+                    {state.step === 'configure' ? 'Analyze Project' :
+                     state.step === 'analyze' ? 'Start Deployment' : 'Continue'}
+                  </span>
+                  <ArrowRight className="h-4 w-4" />
+                </>
+              )}
             </button>
           </div>
         )}
       </div>
+      {/* Server Build Confirmation Dialog */}
+      {showConfirmDialog && (
+        <div
+          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+          onClick={() => setShowConfirmDialog(false)}
+        >
+          <div
+            className="bg-zinc-900 rounded-card border border-zinc-800 p-6 max-w-md w-full mx-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-4 mb-4">
+              <div className="w-12 h-12 rounded-pill bg-yellow-500/20 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="w-6 h-6 text-yellow-500" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-foreground">Server-Side Build Required</h3>
+                <p className="text-zinc-400 mt-2">
+                  {state.confirmationReason || 'This deployment requires building on the server, which may consume significant server resources.'}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-zinc-800/50 rounded-inner p-4 mb-6 border border-zinc-700">
+              <p className="text-sm text-zinc-300">
+                Server builds are necessary when deploying source code without pre-built artifacts. The build process will run on the deployment server.
+              </p>
+            </div>
+
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowConfirmDialog(false);
+                  setStep('configure');
+                }}
+                className="px-4 py-2 rounded-pill border border-zinc-700 text-zinc-400 hover:bg-zinc-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={async () => {
+                  confirmBuild();
+                  setShowConfirmDialog(false);
+                  await handleConfigureContinue();
+                }}
+                className="px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon-hover font-medium transition-colors"
+              >
+                Confirm & Deploy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </DashboardLayout >
   );
 }

@@ -5,10 +5,11 @@ import { AppError } from '../middleware/errorHandler';
 import { ProjectType } from '@runway/shared';
 
 export class BuildDetector {
-  private static readonly BUILD_OUTPUTS = {
+  private static readonly BUILD_OUTPUTS: Record<string, string[]> = {
     react: ['dist'], // Vite only
     next: ['.next'],
     node: [], // Node apps don't have build output
+    static: [], // Static sites served from project root
   };
 
   /**
@@ -97,6 +98,14 @@ export class BuildDetector {
       case 'node':
         // Node apps might not have build output
         break;
+
+      case 'static':
+        // Static sites should have index.html
+        const staticIndexPath = path.join(buildPath, '..', 'index.html');
+        if (!(await fs.pathExists(staticIndexPath))) {
+          logger.warn('Static site may be incomplete - index.html not found');
+        }
+        break;
     }
   }
 
@@ -134,6 +143,12 @@ export class BuildDetector {
     // Check for React (Vite)
     if (deps.react && !deps.next) {
       return 'react';
+    }
+
+    // Check for static site (index.html without framework)
+    const indexPath = path.join(projectDir, 'index.html');
+    if (await fs.pathExists(indexPath)) {
+      return 'static';
     }
 
     // Default to Node.js
@@ -177,6 +192,10 @@ export class BuildDetector {
             400
           );
         }
+        break;
+
+      case 'static':
+        // Static sites don't need build scripts
         break;
     }
   }

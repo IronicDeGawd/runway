@@ -6,8 +6,12 @@ import { logger } from '../utils/logger';
 
 export class ProcessManager {
   
+  private isStaticProject(project: ProjectConfig): boolean {
+    return project.type === 'react' || project.type === 'static';
+  }
+
   async startProject(project: ProjectConfig): Promise<void> {
-    if (project.type === 'react') {
+    if (this.isStaticProject(project)) {
       return staticProcessService.startProject(project);
     } else {
       return pm2Service.startProject(project);
@@ -15,7 +19,7 @@ export class ProcessManager {
   }
 
   async stopProject(project: ProjectConfig): Promise<void> {
-    if (project.type === 'react') {
+    if (this.isStaticProject(project)) {
       return staticProcessService.stopProject(project.id);
     } else {
       return pm2Service.stopProject(project.id);
@@ -23,10 +27,8 @@ export class ProcessManager {
   }
 
   async restartProject(project: ProjectConfig): Promise<void> {
-    // For static sites, restart is essentially checking config re-application
-    if (project.type === 'react') {
-      // For React, start ensures config is there and reloads Caddy. 
-      // Effectively same as restart if already running, or start if stopped.
+    if (this.isStaticProject(project)) {
+      // For static sites, start ensures config is there and reloads Caddy.
       return staticProcessService.startProject(project);
     } else {
       return pm2Service.restartProject(project.id);
@@ -34,8 +36,7 @@ export class ProcessManager {
   }
 
   async deleteProject(project: ProjectConfig): Promise<void> {
-    if (project.type === 'react') {
-      // Just ensure config is gone
+    if (this.isStaticProject(project)) {
       return staticProcessService.stopProject(project.id);
     } else {
       return pm2Service.deleteProject(project.id);
@@ -69,8 +70,8 @@ export class ProcessManager {
     const projects = await projectRegistry.getAll();
     
     // Split projects
-    const pm2Projects = projects.filter(p => p.type !== 'react');
-    const staticProjects = projects.filter(p => p.type === 'react');
+    const pm2Projects = projects.filter(p => p.type !== 'react' && p.type !== 'static');
+    const staticProjects = projects.filter(p => p.type === 'react' || p.type === 'static');
 
     // Reconcile PM2
     await pm2Service.reconcile(pm2Projects);
