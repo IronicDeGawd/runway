@@ -2,9 +2,13 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 
+export type SecurityMode = 'ip-http' | 'domain-https';
+
 export interface CLIConfig {
   serverUrl?: string;
   token?: string;
+  tokenExpiresAt?: string;
+  securityMode?: SecurityMode;
   defaultBuildMode?: 'local' | 'server';
 }
 
@@ -66,4 +70,41 @@ export const clearConfig = (): void => {
 export const isConfigured = (): boolean => {
   const cfg = getConfig();
   return !!(cfg.serverUrl && cfg.token);
+};
+
+export const setSecurityMode = (mode: SecurityMode): void => {
+  const config = readConfig();
+  config.securityMode = mode;
+  writeConfig(config);
+};
+
+export const setTokenExpiresAt = (expiresAt: string): void => {
+  const config = readConfig();
+  config.tokenExpiresAt = expiresAt;
+  writeConfig(config);
+};
+
+export const setAuthData = (
+  token: string,
+  expiresAt: string,
+  securityMode: SecurityMode
+): void => {
+  const config = readConfig();
+  config.token = token;
+  config.tokenExpiresAt = expiresAt;
+  config.securityMode = securityMode;
+  writeConfig(config);
+};
+
+export const isTokenExpired = (): boolean => {
+  const config = getConfig();
+  if (!config.tokenExpiresAt) return true;
+  return new Date(config.tokenExpiresAt) < new Date();
+};
+
+export const getTokenTimeRemaining = (): number => {
+  const config = getConfig();
+  if (!config.tokenExpiresAt) return 0;
+  const remaining = new Date(config.tokenExpiresAt).getTime() - Date.now();
+  return Math.max(0, remaining);
 };
