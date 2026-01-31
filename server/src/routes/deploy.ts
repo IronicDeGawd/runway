@@ -11,7 +11,7 @@ import { caddyConfigManager } from '../services/caddyConfigManager';
 import { DeployAnalyzer } from '../services/deployAnalyzer';
 import { AppError } from '../middleware/errorHandler';
 import { ProjectType } from '@runway/shared';
-import { extractZip } from '../services/zipService';
+import { extractZip, findProjectRoot } from '../services/zipService';
 
 const router = Router();
 const upload = multer({ dest: '../temp_uploads/' });
@@ -52,15 +52,26 @@ router.post('/analyze', requireAuth, upload.single('file'), async (req, res, nex
     return next(new AppError('No file uploaded', 400));
   }
 
+  // Type is REQUIRED - backend trusts user selection per Analysis Responsibility Guidelines
+  const declaredType = req.body.type as ProjectType;
+  const validTypes: ProjectType[] = ['react', 'next', 'node', 'static'];
+
+  if (!declaredType || !validTypes.includes(declaredType)) {
+    return next(new AppError('Project type is required. Valid types: react, next, node, static', 400));
+  }
+
   const tempDir = path.join('../temp_uploads/', `analyze_${Date.now()}`);
 
   try {
     // Extract zip to temp directory
     await extractZip(req.file.path, tempDir);
 
-    // Run analysis
-    const analysis = await DeployAnalyzer.analyze(tempDir, {
-      declaredType: req.body.type as ProjectType | undefined,
+    // Handle nested directory structure (e.g., zip -r project.zip my-app/)
+    const projectRoot = await findProjectRoot(tempDir);
+
+    // Run analysis with user-declared type (trusted, not validated)
+    const analysis = await DeployAnalyzer.analyze(projectRoot, declaredType, {
+      forceBuild: req.body.forceBuild === 'true' || req.body.forceBuild === true,
     });
 
     res.json({ success: true, data: analysis });

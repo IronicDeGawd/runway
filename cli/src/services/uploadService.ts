@@ -34,17 +34,29 @@ export interface DeployWarning {
   code: string;
 }
 
+/**
+ * Analysis result from backend
+ * Backend trusts user-declared type - no auto-detection
+ */
 export interface DeployAnalysis {
-  detectedType: ProjectType;
+  // User's declared type (trusted, not validated)
+  declaredType: ProjectType;
+  // Package state
   hasPackageJson: boolean;
+  hasBuildScript: boolean;
+  hasStartScript: boolean;
+  // Build state (generic detection)
   hasBuildOutput: boolean;
   buildOutputDir: string | null;
   requiresBuild: boolean;
-  isStaticSite: boolean;
-  isNextStaticExport: boolean;
+  // Prebuilt detection (generic)
   isPrebuiltProject: boolean;
+  // Static site detection (generic)
+  isStaticSite: boolean;
+  // Deployment strategy
   strategy: 'static' | 'build-and-serve' | 'serve-prebuilt';
   serveMethod: 'caddy-static' | 'pm2-proxy';
+  // Warnings
   warnings: DeployWarning[];
   requiresConfirmation: boolean;
   confirmationReason?: string;
@@ -239,7 +251,12 @@ export class UploadService {
   /**
    * Analyze a package before deployment to get server warnings and recommendations
    */
-  async analyzePackage(zipPath: string, declaredType?: ProjectType): Promise<AnalyzeResult> {
+  /**
+   * Analyze a package before deployment
+   * @param zipPath - Path to the zip file
+   * @param declaredType - REQUIRED - User-selected project type (backend trusts this)
+   */
+  async analyzePackage(zipPath: string, declaredType: ProjectType): Promise<AnalyzeResult> {
     if (!fs.existsSync(zipPath)) {
       return {
         success: false,
@@ -249,9 +266,7 @@ export class UploadService {
 
     const formData = new FormData();
     formData.append('file', fs.createReadStream(zipPath));
-    if (declaredType) {
-      formData.append('type', declaredType);
-    }
+    formData.append('type', declaredType);
 
     try {
       const response = await axios.post(

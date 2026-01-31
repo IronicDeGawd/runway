@@ -238,8 +238,8 @@ export function UpdateProjectModal({ project, isOpen, onClose }: UpdateProjectMo
                                             {/* Detection Results */}
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="bg-zinc-800/50 p-3 rounded-inner border border-zinc-700">
-                                                    <p className="text-zinc-500 text-xs mb-1">Detected Type</p>
-                                                    <p className="text-foreground font-medium capitalize text-sm">{analysis.detectedType}</p>
+                                                    <p className="text-zinc-500 text-xs mb-1">Project Type</p>
+                                                    <p className="text-foreground font-medium capitalize text-sm">{analysis.declaredType}</p>
                                                 </div>
                                                 <div className="bg-zinc-800/50 p-3 rounded-inner border border-zinc-700">
                                                     <p className="text-zinc-500 text-xs mb-1">Strategy</p>

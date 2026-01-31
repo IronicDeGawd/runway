@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { Upload, Check, ArrowRight, ArrowLeft, RefreshCw, XCircle, Loader2, FileSearch, AlertTriangle } from 'lucide-react';
+import { Upload, Check, ArrowRight, ArrowLeft, RefreshCw, XCircle, Loader2, FileSearch, AlertTriangle, Globe } from 'lucide-react';
 import { useDeployFlow } from '@/hooks/useDeployFlow';
 import { useProjects } from '@/hooks/useProjects';
 import { RiReactjsFill, RiNextjsFill } from "react-icons/ri";
@@ -21,6 +21,7 @@ const runtimes = [
   { id: 'react', label: 'React', icon: <RiReactjsFill className="w-8 h-8" /> },
   { id: 'nextjs', label: 'Next.js', icon: <RiNextjsFill className="w-8 h-8" /> },
   { id: 'nodejs', label: 'Node.js', icon: <FaNodeJs className="w-8 h-8" /> },
+  { id: 'static', label: 'Static', icon: <Globe className="w-8 h-8" /> },
 ];
 
 export default function DeployPage() {
@@ -301,8 +302,8 @@ export default function DeployPage() {
                   {/* Detection Results */}
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-zinc-800/50 p-4 rounded-inner border border-zinc-700">
-                      <p className="text-zinc-500 text-sm mb-1">Detected Type</p>
-                      <p className="text-foreground font-medium capitalize">{state.analysis.detectedType}</p>
+                      <p className="text-zinc-500 text-sm mb-1">Project Type</p>
+                      <p className="text-foreground font-medium capitalize">{state.analysis.declaredType}</p>
                     </div>
                     <div className="bg-zinc-800/50 p-4 rounded-inner border border-zinc-700">
                       <p className="text-zinc-500 text-sm mb-1">Strategy</p>

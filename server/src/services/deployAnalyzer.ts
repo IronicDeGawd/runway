@@ -8,24 +8,32 @@ import {
   AnalyzeOptions,
   PackageJson,
 } from './detection/types';
-import { ProjectTypeDetector } from './detection/projectTypeDetector';
 import { BuildOutputDetector } from './detection/buildOutputDetector';
 import { StaticSiteDetector } from './detection/staticSiteDetector';
-import { NextConfigParser } from './detection/nextConfigParser';
 
 /**
  * Orchestrates package analysis for deployment decisions
- * All detection logic is delegated to specialized modules
+ *
+ * Per Analysis Responsibility Guidelines:
+ * - TRUSTS user-declared project type completely
+ * - Does NOT auto-detect or validate framework types
+ * - Only performs generic build vs source detection
+ * - Adding new frameworks requires ZERO changes here
  */
 export class DeployAnalyzer {
   /**
    * Analyze an extracted package to determine deployment strategy
+   *
+   * @param extractedPath - Path to extracted project
+   * @param declaredType - User-declared project type (REQUIRED, trusted)
+   * @param options - Additional options
    */
   static async analyze(
     extractedPath: string,
+    declaredType: ProjectType,
     options: AnalyzeOptions = {}
   ): Promise<DeployAnalysis> {
-    logger.info(`Analyzing package at: ${extractedPath}`);
+    logger.info(`Analyzing package at: ${extractedPath} (declared type: ${declaredType})`);
 
     const warnings: DeployWarning[] = [];
 
@@ -36,132 +44,74 @@ export class DeployAnalyzer {
 
     // Read package.json if exists
     let packageJson: PackageJson | undefined;
+    let hasBuildScript = false;
+    let hasStartScript = false;
+
     if (hasPackageJson) {
-      packageJson = await ProjectTypeDetector.readPackageJson(extractedPath);
+      packageJson = await this.readPackageJson(extractedPath);
+      hasBuildScript = !!packageJson?.scripts?.build;
+      hasStartScript = !!packageJson?.scripts?.start;
     }
 
     // Detect package manager
     const packageManager = await this.detectPackageManager(extractedPath, hasPackageJson);
 
-    // Detect project type
-    const typeResult = await ProjectTypeDetector.detect(
-      extractedPath,
-      options.declaredType
+    // Generic build output detection (no framework knowledge)
+    const buildResult = await BuildOutputDetector.detect(extractedPath);
+
+    // Determine if prebuilt (generic: has build output + appears complete)
+    const isPrebuiltProject = buildResult.exists && buildResult.isComplete;
+
+    // Check for static site in root (generic)
+    const staticResult = await StaticSiteDetector.detect(extractedPath);
+    const isStaticSite = declaredType === 'static' || (
+      staticResult.isStatic && !hasPackageJson
     );
-
-    // Check if declared type matches detected
-    const typeMatchesDeclared =
-      !options.declaredType || options.declaredType === typeResult.type;
-
-    if (!typeMatchesDeclared) {
-      warnings.push({
-        level: 'warning',
-        message: `Declared type '${options.declaredType}' differs from detected '${typeResult.type}'`,
-        code: 'TYPE_MISMATCH',
-      });
-    }
-
-    // Detect build output
-    const buildResult = await BuildOutputDetector.detect(
-      extractedPath,
-      typeResult.type
-    );
-
-    // Check for Next.js static export
-    const isNextStaticExport =
-      typeResult.type === 'next'
-        ? await NextConfigParser.isStaticExport(extractedPath)
-        : false;
 
     // Determine if build is required
     const requiresBuild = this.determineIfBuildRequired(
-      typeResult,
-      buildResult,
+      declaredType,
+      isPrebuiltProject,
+      hasBuildScript,
       options.forceBuild
     );
 
-    // Determine if this is a prebuilt project
-    const isPrebuiltProject = buildResult.exists && buildResult.isComplete;
-
-    // Determine static site status
-    const isStaticSite =
-      typeResult.type === 'static' ||
-      isNextStaticExport ||
-      (typeResult.type === 'react' && isPrebuiltProject);
-
-    // Determine deployment strategy
+    // Determine deployment strategy based on user-declared type
     const strategy = this.determineStrategy(
-      typeResult.type,
+      declaredType,
       isPrebuiltProject,
       isStaticSite,
       requiresBuild
     );
 
-    // Determine serve method
-    const serveMethod = this.determineServeMethod(typeResult.type, isStaticSite);
+    // Determine serve method based on user-declared type
+    const serveMethod = this.determineServeMethod(declaredType, isStaticSite);
 
     // Determine serve directory
     const serveDir = this.determineServeDir(
-      typeResult.type,
+      declaredType,
       buildResult.directory,
-      isNextStaticExport
+      isStaticSite
+    );
+
+    // Generate warnings (generic, no type validation)
+    this.addWarnings(
+      warnings,
+      declaredType,
+      requiresBuild,
+      isPrebuiltProject,
+      hasBuildScript,
+      hasStartScript,
+      buildResult,
+      options.forceBuild
     );
 
     // Check if server-side build is required (needs confirmation)
     const requiresServerBuild = requiresBuild && !isPrebuiltProject;
 
-    if (requiresServerBuild) {
-      warnings.push({
-        level: 'warning',
-        message: 'Server-side build will consume significant resources on small instances',
-        code: 'SERVER_BUILD',
-      });
-    }
-
-    // Check if we're skipping build due to existing output
-    if (buildResult.exists && !options.forceBuild && !requiresBuild) {
-      warnings.push({
-        level: 'info',
-        message: `Existing build output found in ${buildResult.directory}/, will skip rebuild`,
-        code: 'SKIP_BUILD',
-      });
-    }
-
-    // Add warnings for missing scripts
-    if (requiresBuild && !typeResult.hasBuildScript) {
-      warnings.push({
-        level: 'critical',
-        message: 'Build is required but no "build" script found in package.json',
-        code: 'MISSING_BUILD_SCRIPT',
-      });
-    }
-
-    if (
-      serveMethod === 'pm2-proxy' &&
-      !typeResult.hasStartScript &&
-      typeResult.type !== 'static'
-    ) {
-      warnings.push({
-        level: 'critical',
-        message: 'No "start" script found in package.json - required for PM2',
-        code: 'MISSING_START_SCRIPT',
-      });
-    }
-
-    // Incomplete build warning
-    if (buildResult.exists && !buildResult.isComplete) {
-      warnings.push({
-        level: 'warning',
-        message: 'Build output appears incomplete - consider rebuilding',
-        code: 'INCOMPLETE_BUILD',
-      });
-    }
-
     const analysis: DeployAnalysis = {
-      // Detection results
-      detectedType: typeResult.type,
-      declaredType: options.declaredType,
-      typeMatchesDeclared,
+      // User's declared type (trusted)
+      declaredType,
 
       // Package state
       hasPackageJson,
@@ -171,14 +121,15 @@ export class DeployAnalyzer {
       // Build state
       hasBuildOutput: buildResult.exists,
       buildOutputDir: buildResult.directory,
-      buildOutputType: buildResult.outputType,
       requiresBuild,
-      hasBuildScript: typeResult.hasBuildScript,
+      hasBuildScript,
+      hasStartScript,
 
-      // Special cases
-      isStaticSite,
-      isNextStaticExport,
+      // Prebuilt detection
       isPrebuiltProject,
+
+      // Static site
+      isStaticSite,
 
       // Deployment strategy
       strategy,
@@ -196,11 +147,26 @@ export class DeployAnalyzer {
     };
 
     logger.info(
-      `Analysis complete: type=${analysis.detectedType}, strategy=${analysis.strategy}, ` +
+      `Analysis complete: declaredType=${analysis.declaredType}, strategy=${analysis.strategy}, ` +
         `requiresBuild=${analysis.requiresBuild}, warnings=${warnings.length}`
     );
 
     return analysis;
+  }
+
+  /**
+   * Read and parse package.json
+   */
+  static async readPackageJson(projectDir: string): Promise<PackageJson | undefined> {
+    try {
+      const pkgPath = path.join(projectDir, 'package.json');
+      if (await fs.pathExists(pkgPath)) {
+        return await fs.readJson(pkgPath);
+      }
+    } catch (error) {
+      logger.warn('Failed to read package.json', { error });
+    }
+    return undefined;
   }
 
   /**
@@ -227,11 +193,12 @@ export class DeployAnalyzer {
   }
 
   /**
-   * Determine if build is required
+   * Determine if build is required based on user-declared type
    */
   private static determineIfBuildRequired(
-    typeResult: { type: ProjectType; hasBuildScript: boolean },
-    buildResult: { exists: boolean; isComplete: boolean },
+    declaredType: ProjectType,
+    isPrebuilt: boolean,
+    hasBuildScript: boolean,
     forceBuild?: boolean
   ): boolean {
     // Force build if explicitly requested
@@ -240,41 +207,43 @@ export class DeployAnalyzer {
     }
 
     // Static sites don't need build
-    if (typeResult.type === 'static') {
+    if (declaredType === 'static') {
       return false;
     }
 
     // If prebuilt, don't need to build
-    if (buildResult.exists && buildResult.isComplete) {
+    if (isPrebuilt) {
       return false;
     }
 
-    // React and Next.js always need build if no output exists
-    if (typeResult.type === 'react' || typeResult.type === 'next') {
-      return !buildResult.exists;
+    // React and Next.js typically need build if no output exists
+    if (declaredType === 'react' || declaredType === 'next') {
+      return true;
     }
 
-    // Node.js needs build only if build script exists and no output
-    if (typeResult.type === 'node') {
-      return typeResult.hasBuildScript && !buildResult.exists;
+    // Node.js needs build only if build script exists
+    if (declaredType === 'node') {
+      return hasBuildScript;
     }
 
     return false;
   }
 
   /**
-   * Determine deployment strategy
+   * Determine deployment strategy based on user-declared type
    */
   private static determineStrategy(
-    type: ProjectType,
+    declaredType: ProjectType,
     isPrebuilt: boolean,
     isStatic: boolean,
     requiresBuild: boolean
   ): DeployAnalysis['strategy'] {
-    if (isStatic || (type === 'react' && isPrebuilt)) {
+    // Static sites or prebuilt React apps serve as static
+    if (isStatic || (declaredType === 'react' && isPrebuilt)) {
       return 'static';
     }
 
+    // Prebuilt but not static - serve without rebuilding
     if (isPrebuilt && !requiresBuild) {
       return 'serve-prebuilt';
     }
@@ -283,15 +252,17 @@ export class DeployAnalyzer {
   }
 
   /**
-   * Determine how to serve the project
+   * Determine how to serve the project based on user-declared type
    */
   private static determineServeMethod(
-    type: ProjectType,
+    declaredType: ProjectType,
     isStatic: boolean
   ): DeployAnalysis['serveMethod'] {
-    if (isStatic || type === 'react' || type === 'static') {
+    // Static sites and React use Caddy
+    if (isStatic || declaredType === 'react' || declaredType === 'static') {
       return 'caddy-static';
     }
+    // Node and Next use PM2 proxy
     return 'pm2-proxy';
   }
 
@@ -299,22 +270,82 @@ export class DeployAnalyzer {
    * Determine the directory to serve
    */
   private static determineServeDir(
-    type: ProjectType,
+    declaredType: ProjectType,
     buildOutputDir: string | null,
-    isNextStaticExport: boolean
+    isStatic: boolean
   ): string | undefined {
-    if (isNextStaticExport) {
-      return 'out';
+    if (declaredType === 'static' || isStatic) {
+      return buildOutputDir || '.';
     }
 
-    if (type === 'static') {
-      return '.';
-    }
-
-    if (type === 'react' && buildOutputDir) {
+    if (declaredType === 'react' && buildOutputDir) {
       return buildOutputDir;
     }
 
+    // Next.js static export typically uses 'out'
+    if (declaredType === 'next' && buildOutputDir === 'out') {
+      return 'out';
+    }
+
     return undefined;
+  }
+
+  /**
+   * Add warnings based on analysis (generic, no type validation)
+   */
+  private static addWarnings(
+    warnings: DeployWarning[],
+    declaredType: ProjectType,
+    requiresBuild: boolean,
+    isPrebuilt: boolean,
+    hasBuildScript: boolean,
+    hasStartScript: boolean,
+    buildResult: { exists: boolean; isComplete: boolean; directory: string | null },
+    forceBuild?: boolean
+  ): void {
+    // Server-side build warning (React/Next not prebuilt)
+    if (requiresBuild && !isPrebuilt && (declaredType === 'react' || declaredType === 'next')) {
+      warnings.push({
+        level: 'warning',
+        message: 'Server-side build will consume significant resources on small instances',
+        code: 'SERVER_BUILD',
+      });
+    }
+
+    // Skip build info (existing output found)
+    if (buildResult.exists && !forceBuild && !requiresBuild) {
+      warnings.push({
+        level: 'info',
+        message: `Existing build output found in ${buildResult.directory}/, will skip rebuild`,
+        code: 'SKIP_BUILD',
+      });
+    }
+
+    // Missing build script warning
+    if (requiresBuild && !hasBuildScript) {
+      warnings.push({
+        level: 'critical',
+        message: 'Build is required but no "build" script found in package.json - deployment may fail',
+        code: 'MISSING_BUILD_SCRIPT',
+      });
+    }
+
+    // Missing start script warning (for Node/Next)
+    if ((declaredType === 'node' || declaredType === 'next') && !hasStartScript) {
+      warnings.push({
+        level: 'critical',
+        message: 'No "start" script found in package.json - server may not start',
+        code: 'MISSING_START_SCRIPT',
+      });
+    }
+
+    // Incomplete build warning
+    if (buildResult.exists && !buildResult.isComplete) {
+      warnings.push({
+        level: 'warning',
+        message: 'Build output appears incomplete - consider rebuilding',
+        code: 'INCOMPLETE_BUILD',
+      });
+    }
   }
 }

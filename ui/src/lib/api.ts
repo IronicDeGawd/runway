@@ -63,39 +63,55 @@ export interface DeployWarning {
   code: string;
 }
 
+/**
+ * Analysis result from backend
+ * Backend trusts user-declared type - no auto-detection
+ */
 export interface DeployAnalysis {
-  detectedType: 'react' | 'next' | 'node' | 'static';
+  // User's declared type (trusted, not validated)
+  declaredType: 'react' | 'next' | 'node' | 'static';
+  // Package state
   hasPackageJson: boolean;
+  hasBuildScript: boolean;
+  hasStartScript: boolean;
+  // Build state (generic detection)
   hasBuildOutput: boolean;
   buildOutputDir: string | null;
   requiresBuild: boolean;
-  isStaticSite: boolean;
-  isNextStaticExport: boolean;
+  // Prebuilt detection (generic)
   isPrebuiltProject: boolean;
+  // Static site detection (generic)
+  isStaticSite: boolean;
+  // Deployment strategy
   strategy: 'static' | 'build-and-serve' | 'serve-prebuilt';
   serveMethod: 'caddy-static' | 'pm2-proxy';
+  // Warnings
   warnings: DeployWarning[];
   requiresConfirmation: boolean;
   confirmationReason?: string;
 }
 
-// Analyze project before deployment
+/**
+ * Analyze project before deployment
+ * @param file - The zip file to analyze
+ * @param declaredType - REQUIRED - User-selected project type (backend trusts this)
+ */
 export async function analyzeProject(
   file: File,
-  declaredType?: string
+  declaredType: 'react' | 'next' | 'node' | 'static'
 ): Promise<DeployAnalysis> {
   const formData = new FormData();
   formData.append('file', file);
-  if (declaredType) {
-    formData.append('type', declaredType);
-  }
+  formData.append('type', declaredType);
 
   const response = await api.post<{ success: boolean; data: DeployAnalysis }>(
     '/project/analyze',
     formData,
     {
-      headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 60000, // 1 minute for analysis
+      headers: {
+        'Content-Type': undefined, // Override default JSON header - axios will set correct multipart header with boundary
+      },
     }
   );
 

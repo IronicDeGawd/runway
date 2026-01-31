@@ -4,6 +4,7 @@ import { api, ProjectsResponse, ProcessStatus } from '@/lib/api';
 import { ProjectConfig, ProjectType, ProcessStatus as SharedProcessStatus } from '@runway/shared';
 import { toast } from 'sonner';
 import { useWebSocket } from '@/contexts/WebSocketContext';
+import { sanitizeProjectName } from '@/utils/url';
 
 // Extended Project interface with runtime status
 export interface Project extends Omit<ProjectConfig, 'createdAt'> {
@@ -76,7 +77,7 @@ export function useProjects() {
 
         // Get server IP from window location
         const serverHost = window.location.hostname;
-        const projectPath = `/app/${p.name}`;
+        const projectPath = `/app/${sanitizeProjectName(p.name)}`;
         
         return {
             ...p,

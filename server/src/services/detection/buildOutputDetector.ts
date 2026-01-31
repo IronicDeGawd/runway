@@ -1,184 +1,150 @@
 import fs from 'fs-extra';
 import path from 'path';
-import { ProjectType } from '@runway/shared';
 import { logger } from '../../utils/logger';
 import { BuildOutputResult } from './types';
 import { StaticSiteDetector } from './staticSiteDetector';
-import { NextConfigParser } from './nextConfigParser';
 
 /**
- * Detects existing build output artifacts in a project
+ * Generic build output detector
+ * No framework-specific knowledge - checks common build directories
+ *
+ * Per Analysis Responsibility Guidelines:
+ * - Does NOT detect framework types
+ * - Only determines if upload appears to be pre-built vs source
+ * - Adding new frameworks requires ZERO changes here
  */
 export class BuildOutputDetector {
   /**
-   * Build output directories to check by project type
+   * Common build output directories (checked in order)
+   * These are generic - not tied to any specific framework
    */
-  private static readonly BUILD_DIRS: Record<ProjectType, string[]> = {
-    react: ['dist', 'build'],
-    next: ['out', '.next'], // Check 'out' first for static export
-    node: ['dist', 'build', 'lib'],
-    static: [],
-  };
+  private static readonly COMMON_BUILD_DIRS = [
+    'dist',    // Vite, Rollup, Webpack, TypeScript
+    'build',   // CRA, various tools
+    'out',     // Next.js static export, other tools
+    '.next',   // Next.js server build
+    'lib',     // TypeScript library output
+    'public',  // Some static site generators
+  ];
 
   /**
-   * Detect build output for any project type
+   * Detect build output generically - no framework knowledge
+   * Checks common build directories for significant content
    */
-  static async detect(
-    projectDir: string,
-    projectType: ProjectType
-  ): Promise<BuildOutputResult> {
-    switch (projectType) {
-      case 'react':
-        return this.detectReactBuild(projectDir);
-      case 'next':
-        return this.detectNextBuild(projectDir);
-      case 'node':
-        return this.detectNodeBuild(projectDir);
-      case 'static':
-        return this.detectStaticBuild(projectDir);
-      default:
-        return { exists: false, directory: null, isComplete: false, outputType: null };
-    }
-  }
-
-  /**
-   * Detect React (Vite/CRA) build output
-   */
-  static async detectReactBuild(projectDir: string): Promise<BuildOutputResult> {
-    // Check for Vite output (dist/)
-    const distPath = path.join(projectDir, 'dist');
-    if (await fs.pathExists(distPath)) {
-      const isComplete = await StaticSiteDetector.isBuildOutput(distPath);
-      if (isComplete) {
-        logger.debug('React Vite build detected: dist/');
-        return {
-          exists: true,
-          directory: 'dist',
-          isComplete: true,
-          outputType: 'react-vite',
-        };
-      }
-    }
-
-    // Check for CRA output (build/)
-    const buildPath = path.join(projectDir, 'build');
-    if (await fs.pathExists(buildPath)) {
-      const isComplete = await StaticSiteDetector.isBuildOutput(buildPath);
-      if (isComplete) {
-        logger.debug('React CRA build detected: build/');
-        return {
-          exists: true,
-          directory: 'build',
-          isComplete: true,
-          outputType: 'react-cra',
-        };
-      }
-    }
-
-    return { exists: false, directory: null, isComplete: false, outputType: null };
-  }
-
-  /**
-   * Detect Next.js build output (static export or server build)
-   */
-  static async detectNextBuild(projectDir: string): Promise<BuildOutputResult> {
-    // Check for static export first (out/)
-    const outPath = path.join(projectDir, 'out');
-    if (await fs.pathExists(outPath)) {
-      const files = await fs.readdir(outPath);
-      if (files.length > 0) {
-        const hasIndex = files.includes('index.html');
-        logger.debug('Next.js static export detected: out/');
-        return {
-          exists: true,
-          directory: 'out',
-          isComplete: hasIndex,
-          outputType: 'next-static',
-        };
-      }
-    }
-
-    // Check for server build (.next/)
-    const nextPath = path.join(projectDir, '.next');
-    if (await fs.pathExists(nextPath)) {
-      const files = await fs.readdir(nextPath);
-      const hasServerFiles = files.includes('server') || files.includes('static');
-      logger.debug('Next.js server build detected: .next/');
-      return {
-        exists: true,
-        directory: '.next',
-        isComplete: hasServerFiles,
-        outputType: 'next-server',
-      };
-    }
-
-    return { exists: false, directory: null, isComplete: false, outputType: null };
-  }
-
-  /**
-   * Detect Node.js compiled output (TypeScript, etc.)
-   */
-  static async detectNodeBuild(projectDir: string): Promise<BuildOutputResult> {
-    const buildDirs = ['dist', 'build', 'lib'];
-
-    for (const dir of buildDirs) {
+  static async detect(projectDir: string): Promise<BuildOutputResult> {
+    for (const dir of this.COMMON_BUILD_DIRS) {
       const dirPath = path.join(projectDir, dir);
+
       if (await fs.pathExists(dirPath)) {
-        const files = await fs.readdir(dirPath);
-        // Check for JS files (compiled output)
-        const hasJsFiles = files.some(f => f.endsWith('.js') || f.endsWith('.mjs'));
-        if (hasJsFiles) {
-          logger.debug(`Node.js compiled build detected: ${dir}/`);
+        const stat = await fs.stat(dirPath);
+        if (!stat.isDirectory()) continue;
+
+        const hasContent = await this.hasSignificantContent(dirPath);
+        if (hasContent) {
+          const isComplete = await this.appearsComplete(dirPath);
+          logger.debug(`Build output detected: ${dir}/ (complete: ${isComplete})`);
           return {
             exists: true,
             directory: dir,
-            isComplete: true,
-            outputType: 'node-compiled',
+            isComplete,
           };
         }
       }
     }
 
-    return { exists: false, directory: null, isComplete: false, outputType: null };
-  }
-
-  /**
-   * Detect static site (already built/ready to serve)
-   */
-  static async detectStaticBuild(projectDir: string): Promise<BuildOutputResult> {
-    const result = await StaticSiteDetector.detect(projectDir);
-
-    if (result.isStatic) {
+    // Check if root directory itself is a static site (pre-built)
+    const rootIsStatic = await StaticSiteDetector.detect(projectDir);
+    if (rootIsStatic.isStatic && !await this.hasSourceIndicators(projectDir)) {
+      logger.debug('Root directory appears to be pre-built static site');
       return {
         exists: true,
         directory: '.',
-        isComplete: result.entryFile !== null,
-        outputType: 'static',
+        isComplete: rootIsStatic.entryFile !== null,
       };
     }
 
-    return { exists: false, directory: null, isComplete: false, outputType: null };
+    return { exists: false, directory: null, isComplete: false };
+  }
+
+  /**
+   * Check if directory has significant content (not empty or near-empty)
+   */
+  private static async hasSignificantContent(dir: string): Promise<boolean> {
+    try {
+      const files = await fs.readdir(dir);
+      // Consider significant if has more than just metadata files
+      const significantFiles = files.filter(f =>
+        !f.startsWith('.') &&
+        f !== 'README.md' &&
+        f !== 'LICENSE'
+      );
+      return significantFiles.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Generic completeness check - does the build output appear ready to serve?
+   * Checks for index.html OR significant JS/CSS files
+   */
+  private static async appearsComplete(dir: string): Promise<boolean> {
+    try {
+      // Check if it looks like static build output
+      const hasStaticOutput = await StaticSiteDetector.isBuildOutput(dir);
+      if (hasStaticOutput) return true;
+
+      // For server builds, check for JS files
+      const files = await fs.readdir(dir);
+      const hasJsFiles = files.some(f =>
+        f.endsWith('.js') ||
+        f.endsWith('.mjs') ||
+        f.endsWith('.cjs')
+      );
+
+      // Has server directory (Next.js, etc.)
+      const hasServerDir = files.includes('server') || files.includes('standalone');
+
+      return hasJsFiles || hasServerDir;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Check if directory has source code indicators (not just build output)
+   */
+  private static async hasSourceIndicators(dir: string): Promise<boolean> {
+    const sourceIndicators = [
+      'package.json',
+      'src',
+      'source',
+      'app',
+      'pages',
+      'components',
+    ];
+
+    for (const indicator of sourceIndicators) {
+      if (await fs.pathExists(path.join(dir, indicator))) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /**
    * Check if project has pre-built artifacts ready to serve
    */
-  static async isPrebuilt(
-    projectDir: string,
-    projectType: ProjectType
-  ): Promise<boolean> {
-    const result = await this.detect(projectDir, projectType);
+  static async isPrebuilt(projectDir: string): Promise<boolean> {
+    const result = await this.detect(projectDir);
     return result.exists && result.isComplete;
   }
 
   /**
    * Get the directory to serve for a pre-built project
    */
-  static async getServeDir(
-    projectDir: string,
-    projectType: ProjectType
-  ): Promise<string | null> {
-    const result = await this.detect(projectDir, projectType);
+  static async getServeDir(projectDir: string): Promise<string | null> {
+    const result = await this.detect(projectDir);
     return result.directory;
   }
 }

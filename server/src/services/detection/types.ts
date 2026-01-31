@@ -1,24 +1,13 @@
 import { ProjectType, PackageManager } from '@runway/shared';
 
 /**
- * Result of project type detection
- */
-export interface TypeDetectionResult {
-  type: ProjectType;
-  confidence: 'high' | 'medium' | 'low';
-  indicators: string[];
-  hasBuildScript: boolean;
-  hasStartScript: boolean;
-}
-
-/**
- * Result of build output detection
+ * Result of generic build output detection
+ * No framework-specific knowledge - just checks common build directories
  */
 export interface BuildOutputResult {
   exists: boolean;
   directory: string | null;
   isComplete: boolean;
-  outputType: 'react-vite' | 'react-cra' | 'next-server' | 'next-static' | 'node-compiled' | 'static' | null;
 }
 
 /**
@@ -29,16 +18,6 @@ export interface StaticSiteResult {
   entryFile: string | null;
   hasAssets: boolean;
   assetDirs: string[];
-}
-
-/**
- * Parsed Next.js configuration
- */
-export interface NextConfig {
-  output?: 'standalone' | 'export';
-  basePath?: string;
-  distDir?: string;
-  trailingSlash?: boolean;
 }
 
 /**
@@ -55,29 +34,29 @@ export interface PackageJson {
 
 /**
  * Full analysis result from DeployAnalyzer
+ * Backend trusts user-declared type - no auto-detection
  */
 export interface DeployAnalysis {
-  // Detection results
-  detectedType: ProjectType;
-  declaredType?: ProjectType;
-  typeMatchesDeclared: boolean;
+  // User's declared type (trusted, not validated)
+  declaredType: ProjectType;
 
   // Package state
   hasPackageJson: boolean;
   packageManager: PackageManager;
   packageJson?: PackageJson;
 
-  // Build state
+  // Build state (generic detection)
   hasBuildOutput: boolean;
   buildOutputDir: string | null;
-  buildOutputType: BuildOutputResult['outputType'];
   requiresBuild: boolean;
   hasBuildScript: boolean;
+  hasStartScript: boolean;
 
-  // Special cases
-  isStaticSite: boolean;
-  isNextStaticExport: boolean;
+  // Prebuilt detection (generic)
   isPrebuiltProject: boolean;
+
+  // Static site detection (generic)
+  isStaticSite: boolean;
 
   // Deployment strategy
   strategy: 'static' | 'build-and-serve' | 'serve-prebuilt';
@@ -107,8 +86,6 @@ export interface DeployWarning {
 export type WarningCode =
   | 'SERVER_BUILD'
   | 'SKIP_BUILD'
-  | 'TYPE_MISMATCH'
-  | 'MISSING_ENTRY'
   | 'MISSING_BUILD_SCRIPT'
   | 'MISSING_START_SCRIPT'
   | 'INCOMPLETE_BUILD'
@@ -118,6 +95,5 @@ export type WarningCode =
  * Options for analyze function
  */
 export interface AnalyzeOptions {
-  declaredType?: ProjectType;
   forceBuild?: boolean;
 }

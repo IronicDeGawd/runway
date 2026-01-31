@@ -4,7 +4,7 @@ import { exec } from 'child_process';
 import util from 'util';
 import { v4 as uuidv4 } from 'uuid';
 import { ProjectConfig, PackageManager, ProjectType } from '@runway/shared';
-import { extractZip } from './zipService';
+import { extractZip, findProjectRoot } from './zipService';
 import { projectRegistry } from './projectRegistry';
 import { portManager } from './portManager';
 import { pm2Service } from './pm2Service';
@@ -182,7 +182,18 @@ export class DeploymentService {
       reportProgress('upload', 'Extracting package...', 10);
       await extractZip(filePath, stagingDir);
       logger.info('✅ Zip extracted');
-      
+
+      // Handle nested directory structure (e.g., zip -r project.zip my-app/)
+      const projectRoot = await findProjectRoot(stagingDir);
+      if (projectRoot !== stagingDir) {
+        // Move nested contents to staging root for consistent handling
+        const tempPath = stagingDir + '_temp';
+        await fs.move(projectRoot, tempPath);
+        await fs.remove(stagingDir);
+        await fs.move(tempPath, stagingDir);
+        logger.info('Flattened nested directory structure');
+      }
+
       // 2. Validate package.json exists
       const pkgJsonPath = path.join(stagingDir, 'package.json');
       if (!await fs.pathExists(pkgJsonPath)) {
@@ -420,6 +431,17 @@ export class DeploymentService {
       // 1. Extract zip
       await extractZip(filePath, stagingDir);
       logger.info('✅ Zip extracted');
+
+      // Handle nested directory structure (e.g., zip -r project.zip my-app/)
+      const projectRoot = await findProjectRoot(stagingDir);
+      if (projectRoot !== stagingDir) {
+        // Move nested contents to staging root for consistent handling
+        const tempPath = stagingDir + '_temp';
+        await fs.move(projectRoot, tempPath);
+        await fs.remove(stagingDir);
+        await fs.move(tempPath, stagingDir);
+        logger.info('Flattened nested directory structure');
+      }
 
       // 2. Validate package.json exists
       const pkgJsonPath = path.join(stagingDir, 'package.json');
