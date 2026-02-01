@@ -7,6 +7,7 @@ import { validateRequest } from '../middleware/validateRequest';
 import { requireAuth } from '../middleware/auth';
 import { deploymentService } from '../services/deploymentService';
 import { projectRegistry } from '../services/projectRegistry';
+import { processManager } from '../services/processManager';
 import { caddyConfigManager } from '../services/caddyConfigManager';
 import { DeployAnalyzer } from '../services/deployAnalyzer';
 import { AppError } from '../middleware/errorHandler';
@@ -16,11 +17,25 @@ import { extractZip, findProjectRoot } from '../services/zipService';
 const router = Router();
 const upload = multer({ dest: '../temp_uploads/' });
 
-// Get all projects
+// Get all projects (with status)
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const projects = await projectRegistry.getAll();
-    res.json({ success: true, data: projects });
+    const processes = await processManager.getProcesses();
+
+    // Create a map of process status by project ID
+    const statusMap = new Map<string, string>();
+    for (const proc of processes) {
+      statusMap.set(proc.name, proc.status);
+    }
+
+    // Merge status into projects
+    const projectsWithStatus = projects.map(project => ({
+      ...project,
+      status: statusMap.get(project.id) || 'stopped',
+    }));
+
+    res.json({ success: true, data: projectsWithStatus });
   } catch (error) {
     next(error);
   }

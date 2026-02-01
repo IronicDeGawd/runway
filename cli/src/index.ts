@@ -5,6 +5,9 @@ import { initCommand } from './commands/init';
 import { deployCommand } from './commands/deploy';
 import { listCommand } from './commands/list';
 import { statusCommand } from './commands/status';
+import { resetCommand } from './commands/reset';
+import { domainCommand } from './commands/domain';
+import { metricsCommand } from './commands/metrics';
 
 const program = new Command();
 
@@ -44,6 +47,24 @@ program
   .command('status <project>')
   .description('Get status of a deployed project')
   .action(statusCommand);
+
+// Reset command
+program
+  .command('reset')
+  .description('Reset CLI configuration and re-run init')
+  .action(resetCommand);
+
+// Domain command
+program
+  .command('domain')
+  .description('Configure server domain (same as UI)')
+  .action(domainCommand);
+
+// Metrics command
+program
+  .command('metrics')
+  .description('Display server system metrics')
+  .action(metricsCommand);
 
 // Parse command line arguments
 program.parse();
