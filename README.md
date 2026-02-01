@@ -16,6 +16,19 @@ Deploy React, Next.js, Node.js, and static sites from a single control panel.
 
 ---
 
+> **Note:** Currently only tested on **Ubuntu/Debian** systems. Other Linux distributions may work but are not officially supported. Windows and macOS are not supported for production deployments.
+
+## Runtime Support Status
+
+| Runtime | Build | Process | WebSocket | REST API | Env Mgmt | Serving |
+|---------|:-----:|:-------:|:---------:|:--------:|:--------:|:-------:|
+| **Node.js** | - | PM2 | Working | Working | Working | PM2 |
+| **React** | Working | - | Working | Working | Working | Caddy |
+| **Next.js** | Untested | Untested | Untested | Untested | Untested | PM2 |
+| **Static** | - | - | - | Working | - | Caddy |
+
+---
+
 ## Overview
 
 Runway provides end-to-end application deployment with a CLI tool, web dashboard, and backend server. It handles project detection, builds, process management, and reverse proxy configuration automatically.

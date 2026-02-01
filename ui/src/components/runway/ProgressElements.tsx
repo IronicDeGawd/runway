@@ -137,13 +137,60 @@ export function Skeleton({ className, variant = "rect" }: SkeletonProps) {
   return (
     <div
       className={cn(
-        "animate-shimmer",
+        "animate-shimmer bg-gradient-to-r from-zinc-800 via-zinc-700 to-zinc-800 bg-[length:200%_100%]",
         variant === "circle" && "rounded-full",
         variant === "text" && "h-4 rounded",
         variant === "rect" && "rounded-md",
         className
       )}
     />
+  );
+}
+
+// Skeleton variants for common UI patterns
+export function SkeletonCard({ className }: { className?: string }) {
+  return (
+    <div className={cn("bg-surface-elevated rounded-card p-6 border border-zinc-800", className)}>
+      <Skeleton className="h-4 w-1/3 mb-4" />
+      <Skeleton className="h-8 w-1/2 mb-2" />
+      <Skeleton className="h-4 w-2/3" />
+    </div>
+  );
+}
+
+export function SkeletonMetric({ className }: { className?: string }) {
+  return (
+    <div className={cn("flex flex-col gap-2", className)}>
+      <Skeleton className="h-3 w-16" />
+      <Skeleton className="h-6 w-12" />
+    </div>
+  );
+}
+
+export function SkeletonActivityItem({ className }: { className?: string }) {
+  return (
+    <div className={cn("flex items-start gap-3 p-3 rounded-element bg-surface-muted border border-zinc-800", className)}>
+      <Skeleton variant="circle" className="w-8 h-8 flex-shrink-0" />
+      <div className="flex-1">
+        <Skeleton className="h-4 w-1/3 mb-2" />
+        <Skeleton className="h-3 w-2/3" />
+      </div>
+      <Skeleton className="h-3 w-12" />
+    </div>
+  );
+}
+
+export function SkeletonChart({ className }: { className?: string }) {
+  return (
+    <div className={cn("flex items-end justify-between gap-1 h-20", className)}>
+      {[...Array(12)].map((_, i) => (
+        <Skeleton
+          key={i}
+          className="flex-1"
+          style={{ height: `${20 + Math.random() * 60}%` }}
+        />
+      ))}
+    </div>
   );
 }
 

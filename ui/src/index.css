@@ -77,31 +77,11 @@
     --status-warning: 45 93% 47%;
     --status-info: 240 5% 64.9%;
 
-    /* Button tokens */
-    --btn-start: 160 84% 39%;
-    --btn-start-hover: 160 84% 30%;
-    --btn-stop: 0 84% 60%;
-    --btn-stop-hover: 0 72% 51%;
-    --btn-danger: 0 72% 51%;
-    --btn-danger-hover: 0 72% 45%;
-
     /* Service type tokens */
     --service-postgres: 217 91% 60%;
-    --service-redis: 0 84% 60%;
-    --service-default: 240 5% 46%;
 
     /* Halo effect color */
     --halo-color: 220 50% 90%;
-
-    /* Sidebar (unused but keeping for compatibility) */
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 68 100% 60%;
-    --sidebar-primary-foreground: 0 0% 0%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 68 100% 60%;
   }
 }
 
@@ -117,11 +97,6 @@
 }
 
 @layer components {
-  /* Grid pattern overlay */
-  .grid-pattern {
-    @apply bg-grid-pattern bg-grid;
-  }
-
   /* Animated blob */
   .blob {
     border-radius: 50%;
@@ -147,21 +122,6 @@
     line-height: 1.6;
   }
 
-  /* Pill button styling */
-  .pill-button {
-    @apply rounded-pill px-4 py-2 text-sm font-medium transition-all duration-200;
-  }
-
-  /* Panel cards - dark variant */
-  .panel-card {
-    @apply rounded-card border border-zinc-800 bg-surface-elevated p-card;
-  }
-
-  /* Panel cards - light variant (white slab) */
-  .panel-light {
-    @apply rounded-panel border border-zinc-200 bg-panel text-panel-foreground p-card shadow-panel;
-  }
-
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 6px;
@@ -179,32 +139,4 @@
   }
 }
 
-@layer utilities {
-  .text-gradient {
-    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-accent;
-  }
-  
-  /* Hover lift effect for cards and buttons */
-  .hover-lift {
-    transition: transform 175ms ease-out, box-shadow 175ms ease-out;
-  }
-  
-  .hover-lift:hover {
-    transform: translateY(-2px);
-  }
-  
-  /* Button press effect */
-  .press-effect:active {
-    transform: scale(0.97);
-  }
-  
-  /* Subtle background shift on hover */
-  .hover-bg-shift {
-    transition: background-color 175ms ease-out;
-  }
-  
-  .hover-bg-shift:hover {
-    background-color: hsl(0 0% 100% / 0.03);
-  }
-}
 

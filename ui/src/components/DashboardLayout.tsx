@@ -1,5 +1,5 @@
 import { ReactNode } from 'react';
-import { Navbar } from './Navbar';
+import { TopBar } from './runway/TopBar';
 import { SecurityBanner } from './SecurityBanner';
 
 interface DashboardLayoutProps {
@@ -11,7 +11,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     <div className="min-h-screen bg-surface overflow-hidden">
       <div className="relative">
         <SecurityBanner />
-        <Navbar />
+        <TopBar />
         {/* Halo glow effect */}
         <div 
           className="absolute top-0 left-1/2 -translate-x-1/2 w-[80%] h-32 pointer-events-none z-0 bg-halo-glow blur-[40px]"
