@@ -1,0 +1,47 @@
+{
+  admin localhost:2019
+  auto_https off
+}
+
+:80 {
+  # WebSocket support for realtime updates
+  @websocket_realtime {
+    path /api/realtime*
+  }
+  handle @websocket_realtime {
+    reverse_proxy 127.0.0.1:{{API_PORT}} {
+      {{WEBSOCKET_HEADERS}}
+    }
+  }
+
+  # WebSocket support for project logs
+  @websocket_logs {
+    path /api/logs/*
+  }
+  handle @websocket_logs {
+    reverse_proxy 127.0.0.1:{{API_PORT}} {
+      {{WEBSOCKET_HEADERS}}
+    }
+  }
+
+  # Regular API requests
+  handle /api/* {
+    reverse_proxy 127.0.0.1:{{API_PORT}} {
+      transport http {
+        read_timeout 5m
+        write_timeout 5m
+      }
+    }
+  }
+
+  # Deployed projects - Import all site configs
+  import {{SITES_DIR}}/*.caddy
+
+  # Admin panel UI (fallback - must be last)
+  handle {
+    root * /opt/runway/ui/dist
+    try_files {path} /index.html
+    file_server
+    encode gzip
+  }
+}

@@ -1,0 +1,6 @@
+handle_path {{projectPath}}* {
+    root * {{buildPath}}
+    try_files {path} /index.html
+    file_server
+    encode gzip
+  }
