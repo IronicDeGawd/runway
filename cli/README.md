@@ -1,6 +1,8 @@
 # Runway CLI
 
-Command-line tool for deploying projects to Runway deployment server.
+Command-line tool for deploying projects to Runway deployment server
+
+https://github.com/Ironicdegawd/runway
 
 ## Installation
 
@@ -327,50 +329,3 @@ This appears when connecting to a server without HTTPS:
 - Verify the server URL is correct
 - Ensure the Runway server is running
 - Check network connectivity to the server
-
-## Development
-
-### Building from Source
-
-```bash
-# Clone the repository
-git clone https://github.com/your-org/runway.git
-cd runway
-
-# Install dependencies
-npm install
-
-# Build shared types and CLI
-npm run build:cli
-
-# Run CLI in development
-cd cli
-npm run dev -- deploy
-```
-
-### Project Structure
-
-```
-cli/
-├── src/
-│   ├── index.ts              # Entry point, Commander setup
-│   ├── commands/
-│   │   ├── init.ts           # runway init
-│   │   ├── deploy.ts         # runway deploy
-│   │   ├── list.ts           # runway list
-│   │   └── status.ts         # runway status
-│   ├── services/
-│   │   ├── authService.ts     # Authentication (RSA + standard flows)
-│   │   ├── projectDetector.ts # Auto-detect project type
-│   │   ├── buildService.ts    # Run local builds
-│   │   ├── packageService.ts  # Create deployment zip
-│   │   └── uploadService.ts   # Upload to server
-│   └── utils/
-│       ├── config.ts          # CLI configuration & token management
-│       └── logger.ts          # Colored output
-└── package.json
-```
-
-## License
-
-MIT

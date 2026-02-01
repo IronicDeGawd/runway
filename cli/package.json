@@ -1,18 +1,35 @@
 {
-  "name": "@runway/cli",
-  "version": "0.0.1",
+  "name": "runway-cli",
+  "version": "0.8.0",
   "description": "CLI tool for deploying projects to Runway",
   "main": "dist/index.js",
   "bin": {
     "runway": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "ts-node src/index.ts",
-    "start": "node dist/index.js"
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "cli",
+    "deployment",
+    "runway",
+    "deploy",
+    "hosting"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
   },
   "dependencies": {
-    "@runway/shared": "*",
     "archiver": "^6.0.0",
     "axios": "^1.7.9",
     "chalk": "^4.1.2",
@@ -27,5 +44,8 @@
     "@types/node": "^20.0.0",
     "ts-node": "^10.9.1",
     "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import archiver from 'archiver';
-import { ProjectType } from '@runway/shared';
+import { ProjectType } from '../types';
 import { logger } from '../utils/logger';
 
 export interface PackageOptions {

@@ -1,7 +1,7 @@
 import axios, { AxiosProgressEvent } from 'axios';
 import FormData from 'form-data';
 import fs from 'fs';
-import { ProjectType, BuildMode } from '@runway/shared';
+import { ProjectType, BuildMode } from '../types';
 import { getConfig } from '../utils/config';
 import { logger } from '../utils/logger';
 
