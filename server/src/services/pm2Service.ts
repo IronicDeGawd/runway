@@ -320,7 +320,7 @@ export class PM2Service {
         name: p.name,
         pid: p.pid,
         status: p.pm2_env.status,
-        uptime: p.pm2_env.pm_uptime,
+        uptime: Date.now() - p.pm2_env.pm_uptime,
         cpu: p.monit.cpu,
         memory: p.monit.memory,
       }));
