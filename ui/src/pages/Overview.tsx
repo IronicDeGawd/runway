@@ -14,6 +14,7 @@ import { useProjects } from "@/hooks/useProjects";
 import { useActivity, useActivityStats, formatTimeAgo } from "@/hooks/useActivity";
 import { cn } from "@/lib/utils";
 import { useServices } from "@/hooks/useServices";
+import { Skeleton, SkeletonChart, SkeletonActivityItem, StaggerContainer, StaggerItem } from "@/components/runway/ProgressElements";
 
 export default function OverviewPage() {
   const { metrics, isLoading: metricsLoading } = useSystemMetrics();
@@ -70,7 +71,7 @@ export default function OverviewPage() {
                   </div>
                   <span className="text-zinc-600">|</span>
                   <span className="text-sm text-foreground">
-                    Score: <span className="text-neon font-semibold">{metricsLoading ? '--' : Math.round(100 - (metrics.cpu * 0.4 + metrics.memory * 0.35 + metrics.disk * 0.25))}</span>
+                    Score: <span className="text-neon font-semibold">{metricsLoading ? <Skeleton className="inline-block h-4 w-8" /> : Math.round(100 - (metrics.cpu * 0.4 + metrics.memory * 0.35 + metrics.disk * 0.25))}</span>
                   </span>
                 </div>
               </div>
@@ -84,7 +85,7 @@ export default function OverviewPage() {
                   <div className="bg-zinc-900/50 rounded-element p-4 border border-zinc-700">
                     <p className="text-xs text-zinc-400">Uptime</p>
                     <p className="text-xl text-foreground mt-1">
-                      {metricsLoading ? '--' : `${Math.floor(metrics.uptime / 3600)}h`}
+                      {metricsLoading ? <Skeleton className="h-6 w-12" /> : `${Math.floor(metrics.uptime / 3600)}h`}
                     </p>
                   </div>
                   <div className="bg-zinc-900/50 rounded-element p-4 border border-zinc-700">
@@ -97,9 +98,7 @@ export default function OverviewPage() {
                 <div className="w-2/3 bg-zinc-900/50 rounded-element p-4 border border-zinc-700">
                   <p className="text-xs text-zinc-400 mb-3">Activity</p>
                   {statsLoading ? (
-                    <div className="flex items-center justify-center h-20">
-                      <span className="text-xs text-zinc-500">Loading...</span>
-                    </div>
+                    <SkeletonChart />
                   ) : activityStats.length > 0 && activityStats.some((v: number) => v > 0) ? (
                     <>
                       <div className="flex items-end justify-between gap-1 h-20">
@@ -140,7 +139,7 @@ export default function OverviewPage() {
                 <p className="text-zinc-500 text-sm mb-1">Available Resources</p>
                 <div className="flex items-baseline space-x-2">
                   <p className="text-4xl font-normal text-foreground">
-                    {metricsLoading ? '--' : Math.max(0, 100 - metrics.cpu)}%
+                    {metricsLoading ? <Skeleton className="h-10 w-20" /> : `${Math.max(0, 100 - metrics.cpu)}%`}
                   </p>
                   <span className="text-zinc-500 text-sm">free capacity</span>
                 </div>
@@ -154,7 +153,7 @@ export default function OverviewPage() {
             <div className="flex items-end space-x-4">
               <div className="flex-1 h-32 bg-surface-muted rounded-inner p-4 flex flex-col justify-end border border-zinc-800 cursor-pointer hover:border-zinc-600 transition-colors">
                 <p className="text-xs text-zinc-400">CPU</p>
-                <p className="text-zinc-400 mt-1">{metricsLoading ? '--' : metrics.cpu}%</p>
+                <p className="text-zinc-400 mt-1">{metricsLoading ? <Skeleton className="h-5 w-10" /> : `${metrics.cpu}%`}</p>
               </div>
               <motion.div
                 className="flex-1 h-40 bg-neon rounded-inner p-4 flex flex-col justify-end transform -translate-y-2 cursor-pointer"
@@ -162,12 +161,12 @@ export default function OverviewPage() {
               >
                 <p className="text-xs text-primary-foreground/60 font-bold">Memory</p>
                 <p className="text-primary-foreground font-bold mt-1">
-                  {metricsLoading ? '--' : `${(metrics.usedMemory / (1024 ** 3)).toFixed(1)}GB`}
+                  {metricsLoading ? <Skeleton className="h-5 w-14 bg-gradient-to-r from-lime-600 via-lime-500 to-lime-600" /> : `${(metrics.usedMemory / (1024 ** 3)).toFixed(1)}GB`}
                 </p>
               </motion.div>
               <div className="flex-1 h-32 bg-surface-muted rounded-inner p-4 flex flex-col justify-end border border-zinc-800 cursor-pointer hover:border-zinc-600 transition-colors">
                 <p className="text-xs text-zinc-400">Disk</p>
-                <p className="text-zinc-400 mt-1">{metricsLoading ? '--' : metrics.disk}%</p>
+                <p className="text-zinc-400 mt-1">{metricsLoading ? <Skeleton className="h-5 w-10" /> : `${metrics.disk}%`}</p>
               </div>
             </div>
           </motion.div>
@@ -230,7 +229,11 @@ export default function OverviewPage() {
               <h2 className="text-lg font-semibold text-foreground mb-6">Recent Activity</h2>
               <div className="space-y-3">
                 {activityLoading ? (
-                  <div className="text-zinc-400 text-sm">Loading activity...</div>
+                  <>
+                    <SkeletonActivityItem />
+                    <SkeletonActivityItem />
+                    <SkeletonActivityItem />
+                  </>
                 ) : activity.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
                     <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center mb-3">
@@ -242,34 +245,37 @@ export default function OverviewPage() {
                     </p>
                   </div>
                 ) : (
-                  activity.slice(0, 5).map((item) => (
-                    <motion.div
-                      key={item.id}
-                      className="flex items-start gap-3 p-3 rounded-element bg-surface-muted hover:bg-surface-overlay transition-colors border border-zinc-800 cursor-pointer"
-                      whileHover={{ scale: 1.01 }}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-sm font-medium text-foreground truncate">
-                            {item.project || 'System'}
+                  <StaggerContainer className="space-y-3">
+                    {activity.slice(0, 5).map((item) => (
+                      <StaggerItem key={item.id}>
+                        <motion.div
+                          className="flex items-start gap-3 p-3 rounded-element bg-surface-muted hover:bg-surface-overlay transition-colors border border-zinc-800 cursor-pointer"
+                          whileHover={{ scale: 1.01 }}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-sm font-medium text-foreground truncate">
+                                {item.project || 'System'}
+                              </span>
+                              <span className={cn(
+                                'inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-xs',
+                                item.type === 'deploy' || item.type === 'start' ? 'bg-status-running/20 text-status-running' :
+                                  item.type === 'stop' ? 'bg-zinc-700 text-zinc-300' :
+                                    'bg-status-building/20 text-status-building'
+                              )}>
+                                <span className="h-1.5 w-1.5 rounded-pill bg-current" />
+                                {item.type}
+                              </span>
+                            </div>
+                            <p className="text-sm text-zinc-400 truncate">{item.message}</p>
+                          </div>
+                          <span className="text-xs text-zinc-500 whitespace-nowrap">
+                            {formatTimeAgo(item.timestamp)}
                           </span>
-                          <span className={cn(
-                            'inline-flex items-center gap-1.5 rounded-pill px-2 py-0.5 text-xs',
-                            item.type === 'deploy' || item.type === 'start' ? 'bg-status-running/20 text-status-running' :
-                              item.type === 'stop' ? 'bg-zinc-700 text-zinc-300' :
-                                'bg-status-building/20 text-status-building'
-                          )}>
-                            <span className="h-1.5 w-1.5 rounded-pill bg-current" />
-                            {item.type}
-                          </span>
-                        </div>
-                        <p className="text-sm text-zinc-400 truncate">{item.message}</p>
-                      </div>
-                      <span className="text-xs text-zinc-500 whitespace-nowrap">
-                        {formatTimeAgo(item.timestamp)}
-                      </span>
-                    </motion.div>
-                  ))
+                        </motion.div>
+                      </StaggerItem>
+                    ))}
+                  </StaggerContainer>
                 )}
               </div>
             </div>

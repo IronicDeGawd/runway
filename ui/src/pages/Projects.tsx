@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { useProjects } from "@/hooks/useProjects";
 import {
@@ -440,44 +441,58 @@ export default function ProjectsPage() {
       </div>
 
       {/* Delete Confirmation Modal */}
-      {deleteTarget && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
-          onClick={() => setDeleteTarget(null)}
-        >
-          <div
-            className="bg-panel rounded-panel p-6 max-w-md w-full mx-4"
-            onClick={(e) => e.stopPropagation()}
+      <AnimatePresence>
+        {deleteTarget && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+            onClick={() => setDeleteTarget(null)}
           >
-            <h3 className="text-xl font-semibold text-panel-foreground mb-2">
-              Delete {projects.find(p => p.id === deleteTarget)?.name}?
-            </h3>
-            <p className="text-zinc-600 mb-6">
-              This action cannot be undone. The project and all its data will be permanently removed.
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setDeleteTarget(null)}
-                className="px-4 py-2 rounded-pill border border-zinc-300 text-zinc-700 hover:bg-zinc-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  deleteProject(deleteTarget);
-                  setDeleteTarget(null);
-                  if (selectedId === deleteTarget) {
-                    setSelectedId(projects.filter(p => p.id !== deleteTarget)[0]?.id || null);
-                  }
-                }}
-                className="px-4 py-2 rounded-pill bg-red-600 text-white hover:bg-red-700"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.15 }}
+              className="bg-panel rounded-panel p-6 max-w-md w-full mx-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-semibold text-panel-foreground mb-2">
+                Delete {projects.find(p => p.id === deleteTarget)?.name}?
+              </h3>
+              <p className="text-zinc-600 mb-6">
+                This action cannot be undone. The project and all its data will be permanently removed.
+              </p>
+              <div className="flex gap-3 justify-end">
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => setDeleteTarget(null)}
+                  className="px-4 py-2 rounded-pill border border-zinc-300 text-zinc-700 hover:bg-zinc-50"
+                >
+                  Cancel
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    deleteProject(deleteTarget);
+                    setDeleteTarget(null);
+                    if (selectedId === deleteTarget) {
+                      setSelectedId(projects.filter(p => p.id !== deleteTarget)[0]?.id || null);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-pill bg-red-600 text-white hover:bg-red-700"
+                >
+                  Delete
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Update Project Modal */}
       {selectedProject && (
