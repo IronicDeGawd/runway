@@ -2,7 +2,7 @@ import inquirer from 'inquirer';
 import ora from 'ora';
 import fs from 'fs';
 import path from 'path';
-import { ProjectType, BuildMode } from '@runway/shared';
+import { ProjectType, BuildMode } from '../types';
 import { detectProject } from '../services/projectDetector';
 import { buildService } from '../services/buildService';
 import { packageService } from '../services/packageService';

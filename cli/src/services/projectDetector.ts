@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { ProjectType, PackageManager } from '@runway/shared';
+import { ProjectType, PackageManager } from '../types';
 
 export interface DetectedProject {
   type: ProjectType;

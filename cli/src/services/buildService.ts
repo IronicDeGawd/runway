@@ -1,7 +1,7 @@
 import { spawn } from 'child_process';
 import path from 'path';
 import fs from 'fs';
-import { ProjectType, PackageManager } from '@runway/shared';
+import { ProjectType, PackageManager } from '../types';
 import { logger } from '../utils/logger';
 
 export interface BuildOptions {
