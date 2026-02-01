@@ -1,0 +1,10 @@
+handle_path {{projectPath}}* {
+    reverse_proxy 127.0.0.1:{{port}} {
+      # WebSocket support
+      {{WEBSOCKET_HEADERS}}
+      # Pass original path info to backend
+      header_up X-Forwarded-Prefix {{projectPath}}
+      header_up X-Original-URI {uri}
+    }
+    encode gzip
+  }

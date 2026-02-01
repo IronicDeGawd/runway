@@ -1,0 +1,12 @@
+# Domain: {{domain}}
+{{domain}} {
+  root * {{buildPath}}
+  file_server
+  try_files {path} /index.html
+
+  # Enable compression
+  encode gzip
+
+  # Auto HTTPS (use 'tls internal' for local dev)
+  tls internal
+}
