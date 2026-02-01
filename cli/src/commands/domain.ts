@@ -4,15 +4,17 @@ import ora from 'ora';
 import { getConfig, isConfigured } from '../utils/config';
 import { logger } from '../utils/logger';
 
+interface DomainInfo {
+  domain: string;
+  active: boolean;
+  verificationStatus: 'pending' | 'verified' | 'failed';
+  failureReason?: string;
+}
+
 interface DomainConfig {
-  domain?: {
-    domain: string;
-    active: boolean;
-    verificationStatus: 'pending' | 'verified' | 'failed';
-    failureReason?: string;
-  };
+  domain: DomainInfo | null;
   securityMode: 'ip-http' | 'domain-https';
-  serverIp?: string;
+  serverIp: string | null;
 }
 
 export async function domainCommand(): Promise<void> {
@@ -34,7 +36,7 @@ export async function domainCommand(): Promise<void> {
     const response = await axios.get(`${baseUrl}/api/domain`, {
       headers: config.token ? { Authorization: `Bearer ${config.token}` } : {},
     });
-    domainConfig = response.data;
+    domainConfig = response.data.data;
     spinner.succeed('Configuration loaded');
   } catch (error: any) {
     spinner.fail('Failed to fetch configuration');
@@ -50,7 +52,7 @@ export async function domainCommand(): Promise<void> {
 
   // Display current status
   logger.info(`Server IP: ${domainConfig.serverIp || 'Unknown'}`);
-  logger.info(`Security Mode: ${domainConfig.securityMode}`);
+  logger.info(`Security Mode: ${domainConfig.securityMode || 'ip-http'}`);
 
   if (domainConfig.domain) {
     const d = domainConfig.domain;
@@ -101,7 +103,7 @@ export async function domainCommand(): Promise<void> {
 async function configureDomain(
   baseUrl: string,
   token: string | undefined,
-  serverIp?: string
+  serverIp: string | null
 ): Promise<void> {
   logger.blank();
   if (serverIp) {
