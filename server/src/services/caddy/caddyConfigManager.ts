@@ -65,16 +65,26 @@ export class CaddyConfigManager {
 
   /**
    * Regenerate main Caddyfile with all active projects
+   * Preserves system domain import if configured
    */
   private async updateMainCaddyfile(): Promise<void> {
     try {
-      const mainConfig = await renderTemplate('main-caddyfile', {
-        API_PORT,
-        SITES_DIR,
-      });
+      // Check if system domain is configured - if so, use the template that includes it
+      const hasSystem = await this.hasSystemDomain();
+
+      const mainConfig = hasSystem
+        ? await renderTemplate('main-with-system', {
+            API_PORT,
+            SITES_DIR,
+            SYSTEM_CADDY_PATH,
+          })
+        : await renderTemplate('main-caddyfile', {
+            API_PORT,
+            SITES_DIR,
+          });
 
       await fs.writeFile(CADDYFILE_PATH, mainConfig);
-      logger.info('Updated main Caddyfile with active projects');
+      logger.info(`Updated main Caddyfile (system domain: ${hasSystem ? 'enabled' : 'disabled'})`);
     } catch (error) {
       logger.error('Failed to update main Caddyfile', error);
       throw error;
