@@ -28,6 +28,29 @@ const TEMP_DIR = path.resolve(process.cwd(), '../temp_uploads');
 fs.ensureDirSync(APPS_DIR);
 fs.ensureDirSync(TEMP_DIR);
 
+/**
+ * Parse .env file content into a Record
+ */
+function parseEnvContent(content: string): Record<string, string> {
+  const vars: Record<string, string> = {};
+  for (const line of content.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIndex = trimmed.indexOf('=');
+    if (eqIndex > 0) {
+      const key = trimmed.slice(0, eqIndex).trim();
+      let value = trimmed.slice(eqIndex + 1).trim();
+      // Remove surrounding quotes
+      if ((value.startsWith('"') && value.endsWith('"')) ||
+          (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      vars[key] = value;
+    }
+  }
+  return vars;
+}
+
 export class DeploymentService {
   // Track cleanup timers to prevent timer accumulation
   private cleanupTimers = new Map<string, NodeJS.Timeout>();
@@ -579,6 +602,25 @@ export class DeploymentService {
       }
       await fs.move(stagingDir, targetDir);
       logger.info(`Deployed to ${targetDir}`);
+
+      // 8.5. Extract .env from Node.js projects and store in database
+      if (type === 'node') {
+        const envFilePath = path.join(targetDir, '.env');
+        if (await fs.pathExists(envFilePath)) {
+          const envContent = await fs.readFile(envFilePath, 'utf-8');
+          const extractedEnvVars = parseEnvContent(envContent);
+
+          if (Object.keys(extractedEnvVars).length > 0) {
+            // Store env vars in encrypted database
+            await envManager.setEnv(projectId, extractedEnvVars, true); // skipMutabilityCheck
+            logger.info(`Loaded ${Object.keys(extractedEnvVars).length} env vars from uploaded .env`);
+          }
+
+          // Remove .env from deployed files (it's now in encrypted DB)
+          await fs.remove(envFilePath);
+          logger.info('Removed .env file from deployment (stored securely in database)');
+        }
+      }
 
       // 9. Register / Update Project
       const newConfig: ProjectConfig = {

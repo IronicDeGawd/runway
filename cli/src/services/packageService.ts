@@ -9,6 +9,7 @@ export interface PackageOptions {
   projectType: ProjectType;
   buildOutputDir: string;
   includeSource: boolean; // For server-build mode
+  envFile?: string; // Path to env file to include (for Node.js projects)
 }
 
 export interface PackageResult {
@@ -52,7 +53,7 @@ export class PackageService {
         this.addSourceFiles(archive, projectPath);
       } else {
         // Local-build mode: include only build artifacts
-        this.addBuildArtifacts(archive, projectPath, projectType, buildOutputDir);
+        this.addBuildArtifacts(archive, projectPath, projectType, buildOutputDir, options.envFile);
       }
 
       archive.finalize();
@@ -86,7 +87,8 @@ export class PackageService {
     archive: archiver.Archiver,
     projectPath: string,
     projectType: ProjectType,
-    buildOutputDir: string
+    buildOutputDir: string,
+    envFile?: string
   ): void {
     // Include package.json if it exists (optional for static sites)
     const packageJsonPath = path.join(projectPath, 'package.json');
@@ -126,12 +128,14 @@ export class PackageService {
         break;
 
       case 'node':
-        // For Node.js, include everything except node_modules
+        // For Node.js, include everything except node_modules and env files
         const nodeIgnorePatterns = [
           'node_modules/**',
           '.git/**',
           '.runway-deploy.zip',
           '*.log',
+          '.env',      // Exclude default .env (we'll add specified one explicitly)
+          '.env.*',
         ];
 
         archive.glob('**/*', {
@@ -139,6 +143,12 @@ export class PackageService {
           ignore: nodeIgnorePatterns,
           dot: true,
         });
+
+        // Include the specified env file as .env
+        if (envFile && fs.existsSync(envFile)) {
+          archive.file(envFile, { name: '.env' });
+          logger.dim('Including environment file');
+        }
 
         logger.dim('Including Node.js project files');
         break;

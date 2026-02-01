@@ -2,6 +2,7 @@ import inquirer from 'inquirer';
 import ora from 'ora';
 import fs from 'fs';
 import path from 'path';
+import axios from 'axios';
 import { ProjectType, BuildMode } from '../types';
 import { detectProject } from '../services/projectDetector';
 import { buildService } from '../services/buildService';
@@ -83,6 +84,57 @@ async function promptManualEnvVars(): Promise<Record<string, string>> {
   return vars;
 }
 
+/**
+ * Prompt user for environment variable options when no .env file exists
+ */
+async function promptEnvOptions(): Promise<string | undefined> {
+  const { envChoice } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'envChoice',
+      message: 'How would you like to provide environment variables?',
+      choices: [
+        { name: 'Specify path to .env file', value: 'path' },
+        { name: 'Enter variables manually (creates .env)', value: 'manual' },
+        { name: 'Continue without environment variables', value: 'skip' },
+      ],
+    },
+  ]);
+
+  if (envChoice === 'path') {
+    const { envPath } = await inquirer.prompt([
+      {
+        type: 'input',
+        name: 'envPath',
+        message: 'Path to env file:',
+        validate: (input: string) => {
+          if (!input.trim()) return 'Please enter a path';
+          if (!fs.existsSync(input)) return 'File not found';
+          return true;
+        },
+      },
+    ]);
+    logger.success(`Using env file: ${envPath}`);
+    return envPath;
+  }
+
+  if (envChoice === 'manual') {
+    const vars = await promptManualEnvVars();
+    if (Object.keys(vars).length > 0) {
+      // Write to .env file in project
+      const envContent = Object.entries(vars)
+        .map(([k, v]) => `${k}=${v}`)
+        .join('\n');
+      const envPath = path.join(process.cwd(), '.env');
+      fs.writeFileSync(envPath, envContent);
+      logger.success(`Created .env with ${Object.keys(vars).length} variables`);
+      return envPath;
+    }
+  }
+
+  return undefined;
+}
+
 export async function deployCommand(options: DeployOptions): Promise<void> {
   logger.header('Runway Deploy');
 
@@ -130,6 +182,59 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     projectName = answers.name;
   }
 
+  // Ask if environment variables are required
+  const { needsEnv } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'needsEnv',
+      message: 'Does this project require environment variables?',
+      default: false,
+    },
+  ]);
+
+  let envFilePath: string | undefined;
+  let envVars: Record<string, string> = {};
+  let envInjected = false;
+
+  if (needsEnv) {
+    const defaultEnvPath = path.join(process.cwd(), '.env');
+    const hasEnvFile = fs.existsSync(defaultEnvPath);
+
+    if (hasEnvFile) {
+      // .env found - confirm with user
+      const { useExisting } = await inquirer.prompt([
+        {
+          type: 'confirm',
+          name: 'useExisting',
+          message: 'Found .env file in project. Use it?',
+          default: true,
+        },
+      ]);
+
+      if (useExisting) {
+        envFilePath = defaultEnvPath;
+        envVars = parseEnvFile(defaultEnvPath);
+        envInjected = Object.keys(envVars).length > 0;
+        logger.success(`Loaded ${Object.keys(envVars).length} variables from .env`);
+      } else {
+        // User declined existing .env - show other options
+        envFilePath = await promptEnvOptions();
+        if (envFilePath) {
+          envVars = parseEnvFile(envFilePath);
+          envInjected = Object.keys(envVars).length > 0;
+        }
+      }
+    } else {
+      // No .env found - show options
+      logger.warn('No .env file found in project directory.');
+      envFilePath = await promptEnvOptions();
+      if (envFilePath) {
+        envVars = parseEnvFile(envFilePath);
+        envInjected = Object.keys(envVars).length > 0;
+      }
+    }
+  }
+
   // Determine project type
   const projectType = options.type || detectedProject.type;
 
@@ -169,55 +274,6 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
 
   logger.blank();
 
-  // ENV source prompt for React/Next local builds
-  let envVars: Record<string, string> = {};
-  let envInjected = false;
-  let envFilePath = options.envFile;
-
-  if (buildMode === 'local' && (projectType === 'react' || projectType === 'next')) {
-    const defaultEnvPath = path.join(process.cwd(), '.env');
-    const hasEnvFile = fs.existsSync(defaultEnvPath);
-
-    if (!options.skipEnvPrompt && !options.envFile) {
-      const envChoices = [
-        ...(hasEnvFile ? [{ name: 'Use .env file', value: 'file' }] : []),
-        { name: 'Enter variables manually', value: 'manual' },
-        { name: 'Skip (ENV will be locked after deploy)', value: 'skip' },
-      ];
-
-      const { envSource } = await inquirer.prompt([
-        {
-          type: 'list',
-          name: 'envSource',
-          message: 'Environment variables for build:',
-          choices: envChoices,
-          default: hasEnvFile ? 'file' : 'skip',
-        },
-      ]);
-
-      if (envSource === 'file') {
-        envFilePath = defaultEnvPath;
-        envVars = parseEnvFile(defaultEnvPath);
-        envInjected = Object.keys(envVars).length > 0;
-        logger.success(`Loaded ${Object.keys(envVars).length} variables from .env`);
-      } else if (envSource === 'manual') {
-        envVars = await promptManualEnvVars();
-        envInjected = Object.keys(envVars).length > 0;
-        if (envInjected) {
-          logger.success(`Added ${Object.keys(envVars).length} environment variables`);
-        }
-      } else {
-        logger.warn('Skipping ENV injection - environment variables will be locked after deployment.');
-      }
-    } else if (options.envFile && fs.existsSync(options.envFile)) {
-      envVars = parseEnvFile(options.envFile);
-      envInjected = Object.keys(envVars).length > 0;
-      logger.success(`Loaded ${Object.keys(envVars).length} variables from ${options.envFile}`);
-    }
-
-    logger.blank();
-  }
-
   // Step 1: Build (for local-build mode)
   let buildOutputDir = detectedProject.buildOutputDir;
 
@@ -255,6 +311,7 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
       projectType,
       buildOutputDir,
       includeSource: buildMode === 'server',
+      envFile: projectType === 'node' ? envFilePath : undefined,
     });
   } catch (error) {
     logger.error(`Packaging failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -359,8 +416,26 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
         logger.success('Deployment successful!');
 
         const safeName = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-        logger.blank();
-        logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
+
+        // Fetch domain config to show proper URL
+        try {
+          const domainResponse = await axios.get(`${config.serverUrl}/api/domain`, {
+            headers: config.token ? { Authorization: `Bearer ${config.token}` } : {},
+          });
+          const domainConfig = domainResponse.data;
+
+          if (domainConfig.domain?.active && domainConfig.securityMode === 'domain-https') {
+            logger.blank();
+            logger.info(`Your app is available at: https://${domainConfig.domain.domain}/app/${safeName}`);
+          } else {
+            logger.blank();
+            logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
+          }
+        } catch {
+          // Fallback to server URL if domain fetch fails
+          logger.blank();
+          logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
+        }
       } else {
         logger.error(`Deployment failed: ${finalStatus.error || 'Unknown error'}`);
         if (finalStatus.logs) {
