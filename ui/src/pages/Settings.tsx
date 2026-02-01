@@ -1,7 +1,7 @@
-// import { useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
 import { DomainConfigPanel } from '@/components/DomainConfigPanel';
-import { /* Moon, Bell, RefreshCw, */ Info, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { Info, AlertTriangle, ArrowLeft, Loader2 } from 'lucide-react';
+import { useSystemInfo, formatDate } from '@/hooks/useSystemInfo';
 
 /* Switch component - commented out (used by mocked User Preferences)
 function Switch({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: (checked: boolean) => void }) {
@@ -20,10 +20,7 @@ function Switch({ checked, onCheckedChange }: { checked: boolean; onCheckedChang
 */
 
 export default function SettingsPage() {
-  // Commented out - mocked User Preferences state
-  // const [darkMode, setDarkMode] = useState(true);
-  // const [notifications, setNotifications] = useState(true);
-  // const [autoRestart, setAutoRestart] = useState(false);
+  const { systemInfo, isLoading: isSystemLoading } = useSystemInfo();
 
   return (
     <DashboardLayout>
@@ -50,24 +47,30 @@ export default function SettingsPage() {
               <Info className="h-5 w-5 text-neon" />
               <h2 className="text-lg font-semibold text-foreground">System Information</h2>
             </div>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
-                <span className="text-zinc-400">Version</span>
-                <span className="font-medium text-foreground">v2.0.0</span>
+            {isSystemLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
               </div>
-              <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
-                <span className="text-zinc-400">Runtime</span>
-                <span className="font-medium text-foreground">Node 20.x</span>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
+                  <span className="text-zinc-400">Version</span>
+                  <span className="font-medium text-foreground">v{systemInfo?.version || '-'}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
+                  <span className="text-zinc-400">Node.js Runtime</span>
+                  <span className="font-medium text-foreground">{systemInfo?.nodeVersion || '-'}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
+                  <span className="text-zinc-400">Platform</span>
+                  <span className="font-medium text-foreground">{systemInfo?.platform || '-'}</span>
+                </div>
+                <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
+                  <span className="text-zinc-400">Last Updated</span>
+                  <span className="font-medium text-foreground">{formatDate(systemInfo?.lastUpdated || null)}</span>
+                </div>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
-                <span className="text-zinc-400">Platform</span>
-                <span className="font-medium text-foreground">Linux x64</span>
-              </div>
-              <div className="flex items-center justify-between p-3 rounded-element bg-surface-muted border border-zinc-800">
-                <span className="text-zinc-400">Last Updated</span>
-                <span className="font-medium text-foreground">Jan 15, 2024</span>
-              </div>
-            </div>
+            )}
           </div>
         </div>
 

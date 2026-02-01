@@ -182,7 +182,7 @@ export function TopBar({ className }: TopBarProps) {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 4 }}
               transition={{ duration: 0.15 }}
-              className="absolute top-full mt-2 w-full bg-panel border border-panel-border rounded-xl shadow-elevated z-50 overflow-hidden"
+              className="absolute top-full mt-2 w-full bg-popover border border-border rounded-xl shadow-elevated z-50 overflow-hidden"
             >
               {filteredProjects.length > 0 ? (
                 <div className="py-1">
@@ -190,17 +190,17 @@ export function TopBar({ className }: TopBarProps) {
                     <button
                       key={project.id}
                       onClick={() => handleSearchSelect(project.id)}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-panel-hover transition-colors text-left"
+                      className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-muted transition-colors text-left"
                     >
-                      <Folder className="w-4 h-4 text-text-muted" />
+                      <Folder className="w-4 h-4 text-muted-foreground" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-text-primary truncate">{project.name}</p>
-                        <p className="text-xs text-text-muted">{project.runtime} • {project.status}</p>
+                        <p className="text-sm font-medium text-popover-foreground truncate">{project.name}</p>
+                        <p className="text-xs text-muted-foreground">{project.runtime} • {project.status}</p>
                       </div>
                       <div className={cn(
                         "w-2 h-2 rounded-full",
                         project.status === "running" && "bg-status-running",
-                        project.status === "stopped" && "bg-zinc-500",
+                        project.status === "stopped" && "bg-status-stopped",
                         project.status === "failed" && "bg-status-error"
                       )} />
                     </button>
@@ -208,7 +208,7 @@ export function TopBar({ className }: TopBarProps) {
                 </div>
               ) : (
                 <div className="px-4 py-6 text-center">
-                  <p className="text-sm text-text-muted">No projects found</p>
+                  <p className="text-sm text-muted-foreground">No projects found</p>
                 </div>
               )}
             </motion.div>
@@ -245,7 +245,7 @@ export function TopBar({ className }: TopBarProps) {
         )}
 
         {/* WebSocket Status */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-panel border border-panel-border">
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-surface-elevated border bg-surface-elevated">
           {isConnected ? (
             <>
               <Wifi className="w-4 h-4 text-status-running" />
@@ -265,7 +265,7 @@ export function TopBar({ className }: TopBarProps) {
             onClick={() => setShowNotifications(!showNotifications)}
             className={cn(
               "relative p-2 rounded-lg transition-colors",
-              showNotifications ? "bg-panel-active text-text-primary" : "text-text-muted hover:bg-panel hover:text-text-primary"
+              showNotifications ? "bg-muted text-popover-foreground" : "text-muted-foreground hover:bg-muted hover:text-popover-foreground"
             )}
           >
             <Bell className="w-5 h-5" />
@@ -285,17 +285,17 @@ export function TopBar({ className }: TopBarProps) {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 8, scale: 0.96 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute right-0 top-full mt-2 w-80 bg-panel border border-panel-border rounded-xl shadow-elevated z-50 overflow-hidden"
+                  className="absolute right-0 top-full mt-2 w-80 bg-popover border border-border rounded-xl shadow-elevated z-50 overflow-hidden"
                 >
-                  <div className="p-3 border-b border-panel-border flex items-center justify-between">
-                    <h3 className="text-sm font-medium text-text-primary">
+                  <div className="p-3 border-b border-border flex items-center justify-between">
+                    <h3 className="text-sm font-medium text-popover-foreground">
                       Notifications {unreadCount > 0 && `(${unreadCount})`}
                     </h3>
                     <div className="flex items-center gap-1">
                       {unreadCount > 0 && (
                         <button
                           onClick={markAllAsRead}
-                          className="p-1.5 text-text-muted hover:text-text-primary hover:bg-panel-hover rounded transition-colors"
+                          className="p-1.5 text-muted-foreground hover:text-popover-foreground hover:bg-muted rounded transition-colors"
                           title="Mark all as read"
                         >
                           <CheckCheck className="w-4 h-4" />
@@ -304,7 +304,7 @@ export function TopBar({ className }: TopBarProps) {
                       {notifications.length > 0 && (
                         <button
                           onClick={clearAll}
-                          className="p-1.5 text-text-muted hover:text-status-error hover:bg-panel-hover rounded transition-colors"
+                          className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-muted rounded transition-colors"
                           title="Clear all"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -319,32 +319,32 @@ export function TopBar({ className }: TopBarProps) {
                           key={notif.id}
                           onClick={() => handleNotificationClick(notif.id, notif.projectId)}
                           className={cn(
-                            "p-3 hover:bg-panel-hover border-b border-panel-border last:border-0 cursor-pointer transition-colors group",
-                            !notif.read && "bg-panel-hover/50"
+                            "p-3 hover:bg-muted border-b border-border last:border-0 cursor-pointer transition-colors group",
+                            !notif.read && "bg-muted/50"
                           )}
                         >
                           <div className="flex items-start gap-3">
                             <div className={cn(
                               "w-2 h-2 rounded-full mt-1.5 flex-shrink-0",
-                              notif.type === "success" && "bg-status-running",
+                              notif.type === "success" && "bg-status-success",
                               notif.type === "error" && "bg-status-error",
-                              notif.type === "warning" && "bg-yellow-500",
-                              notif.type === "info" && "bg-status-building"
+                              notif.type === "warning" && "bg-status-warning",
+                              notif.type === "info" && "bg-status-info"
                             )} />
                             <div className="flex-1 min-w-0">
                               <p className={cn(
-                                "text-sm text-text-primary",
+                                "text-sm text-popover-foreground",
                                 !notif.read && "font-medium"
                               )}>{notif.title}</p>
-                              <p className="text-xs text-text-muted truncate">{notif.message}</p>
-                              <p className="text-2xs text-text-muted mt-1">{formatNotificationTime(notif.time)}</p>
+                              <p className="text-xs text-muted-foreground truncate">{notif.message}</p>
+                              <p className="text-[10px] text-muted-foreground/70 mt-1">{formatNotificationTime(notif.time)}</p>
                             </div>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 clearNotification(notif.id);
                               }}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-text-muted hover:text-status-error transition-all"
+                              className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground hover:text-destructive transition-all"
                             >
                               <X className="w-3 h-3" />
                             </button>
@@ -353,9 +353,9 @@ export function TopBar({ className }: TopBarProps) {
                       ))
                     ) : (
                       <div className="px-4 py-8 text-center">
-                        <Bell className="w-8 h-8 text-text-muted mx-auto mb-2 opacity-50" />
-                        <p className="text-sm text-text-muted">No notifications</p>
-                        <p className="text-xs text-text-muted mt-1">
+                        <Bell className="w-8 h-8 text-muted-foreground/50 mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">No notifications</p>
+                        <p className="text-xs text-muted-foreground/70 mt-1">
                           You'll see alerts here when CPU or memory usage is high
                         </p>
                       </div>
@@ -373,7 +373,7 @@ export function TopBar({ className }: TopBarProps) {
             onClick={() => setShowUserMenu(!showUserMenu)}
             className={cn(
               "flex items-center gap-2 p-1.5 pr-3 rounded-lg transition-colors",
-              showUserMenu ? "bg-panel-active" : "hover:bg-panel"
+              showUserMenu ? "bg-muted" : "hover:bg-muted"
             )}
           >
             <div className="w-7 h-7 rounded-full bg-accent-primary/20 flex items-center justify-center">
@@ -394,16 +394,16 @@ export function TopBar({ className }: TopBarProps) {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 8, scale: 0.96 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute right-0 top-full mt-2 w-48 bg-panel border border-panel-border rounded-xl shadow-elevated z-50 overflow-hidden"
+                  className="absolute right-0 top-full mt-2 w-48 bg-popover border border-border rounded-xl shadow-elevated z-50 overflow-hidden"
                 >
-                  <div className="p-3 border-b border-panel-border">
-                    <p className="text-sm font-medium text-text-primary">Admin</p>
-                    <p className="text-xs text-text-muted">admin@runway.local</p>
+                  <div className="p-3 border-b border-border">
+                    <p className="text-sm font-medium text-popover-foreground">Admin</p>
+                    <p className="text-xs text-muted-foreground">admin@runway.local</p>
                   </div>
                   <div className="p-1">
                     <Link
                       to="/settings"
-                      className="flex items-center gap-2 px-3 py-2 text-sm text-text-secondary hover:bg-panel-hover rounded-lg transition-colors"
+                      className="flex items-center gap-2 px-3 py-2 text-sm text-popover-foreground hover:bg-muted rounded-lg transition-colors"
                       onClick={() => setShowUserMenu(false)}
                     >
                       <Settings className="w-4 h-4" />
@@ -411,7 +411,7 @@ export function TopBar({ className }: TopBarProps) {
                     </Link>
                     <button
                       onClick={handleLogout}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-status-error hover:bg-panel-hover rounded-lg transition-colors"
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-destructive hover:bg-muted rounded-lg transition-colors"
                     >
                       <LogOut className="w-4 h-4" />
                       Sign out
