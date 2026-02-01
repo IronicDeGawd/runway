@@ -8,7 +8,6 @@ import {
   User,
   ChevronDown,
   LogOut,
-  HelpCircle,
   Wifi,
   WifiOff,
   Lock,
@@ -18,11 +17,20 @@ import {
   CheckCheck,
   Folder
 } from "lucide-react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useWebSocket } from "@/contexts/WebSocketContext";
 import { useDomain } from "@/hooks/useDomain";
 import { useNotifications, formatNotificationTime } from "@/hooks/useNotifications";
 import { useProjects } from "@/hooks/useProjects";
+import { useAuth } from "@/contexts/AuthContext";
+
+const navItems = [
+  { label: 'Overview', path: '/' },
+  { label: 'Projects', path: '/projects' },
+  { label: 'Deploy', path: '/deploy' },
+  { label: 'Services', path: '/services' },
+  { label: 'Settings', path: '/settings' },
+];
 
 interface TopBarProps {
   className?: string;
@@ -30,6 +38,8 @@ interface TopBarProps {
 
 export function TopBar({ className }: TopBarProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { logout } = useAuth();
   const [searchQuery, setSearchQuery] = React.useState("");
   const [searchFocused, setSearchFocused] = React.useState(false);
   const [showNotifications, setShowNotifications] = React.useState(false);
@@ -38,6 +48,11 @@ export function TopBar({ className }: TopBarProps) {
   const { isSecure, isLoading: isDomainLoading } = useDomain();
   const { notifications, unreadCount, markAsRead, markAllAsRead, clearNotification, clearAll } = useNotifications();
   const { projects } = useProjects();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+  };
 
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -83,19 +98,51 @@ export function TopBar({ className }: TopBarProps) {
 
   return (
     <header className={cn(
-      "h-14 bg-surface border-b border-panel-border flex items-center justify-between px-4 lg:px-6",
+      "h-16 bg-surface flex items-center justify-between px-4 lg:px-6",
       className
     )}>
       {/* Logo */}
       <Link to="/" className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-accent-primary flex items-center justify-center">
-          <span className="text-accent-primary-foreground font-bold text-sm">P</span>
+          <span className="text-accent-primary-foreground font-bold text-sm">R</span>
         </div>
         <span className="text-text-primary font-semibold hidden sm:block">Runway</span>
       </Link>
 
+      {/* Center Navigation Tabs */}
+      <div className="hidden md:flex items-center bg-panel rounded-pill p-1 border border-zinc-200">
+        <div className="p-2">
+          <div className="grid grid-cols-3 gap-0.5 w-5 h-5">
+            {[...Array(9)].map((_, i) => (
+              <div key={i} className="bg-zinc-400 rounded-sm" />
+            ))}
+          </div>
+        </div>
+        <div className="flex space-x-1">
+          {navItems.map((item) => {
+            const isActive = location.pathname === item.path ||
+              (item.path === '/projects' && location.pathname.startsWith('/projects/'));
+
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={cn(
+                  'px-4 py-2 rounded-pill text-sm font-medium transition-colors',
+                  isActive
+                    ? 'bg-neon text-primary-foreground'
+                    : 'text-zinc-500 hover:text-zinc-900'
+                )}
+              >
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Search */}
-      <div className="flex-1 max-w-md mx-4 lg:mx-8 relative">
+      <div className="flex-1 max-w-xs mx-4 relative hidden lg:block">
         <div className="relative flex items-center">
           <Search className="absolute left-4 w-4 h-4 text-text-muted" />
           <input
@@ -320,11 +367,6 @@ export function TopBar({ className }: TopBarProps) {
           </AnimatePresence>
         </div>
 
-        {/* Help */}
-        <button className="p-2 rounded-lg text-text-muted hover:bg-panel hover:text-text-primary transition-colors">
-          <HelpCircle className="w-5 h-5" />
-        </button>
-
         {/* User menu */}
         <div className="relative">
           <button
@@ -367,7 +409,10 @@ export function TopBar({ className }: TopBarProps) {
                       <Settings className="w-4 h-4" />
                       Settings
                     </Link>
-                    <button className="w-full flex items-center gap-2 px-3 py-2 text-sm text-status-error hover:bg-panel-hover rounded-lg transition-colors">
+                    <button
+                      onClick={handleLogout}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-status-error hover:bg-panel-hover rounded-lg transition-colors"
+                    >
                       <LogOut className="w-4 h-4" />
                       Sign out
                     </button>
