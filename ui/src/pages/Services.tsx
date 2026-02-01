@@ -3,6 +3,7 @@ import { DashboardLayout } from '@/components/DashboardLayout';
 import { useServices, Service } from '@/hooks/useServices';
 import { Database, Server, Copy, Eye, EyeOff, Plus, Play, Square, ArrowLeft, Filter, X, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { copyWithToast } from '@/lib/clipboard';
 import { motion, AnimatePresence } from 'framer-motion';
 
 function ConfigureServiceModal({
@@ -306,42 +307,8 @@ export default function ServicesPage() {
     }
   };
 
-  // Toast state for copy feedback
-  const [copyToast, setCopyToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
-
-  // Copy to clipboard with fallback for HTTP
-  const copyToClipboard = async (text: string) => {
-    try {
-      if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // Fallback for HTTP/IP
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.position = 'fixed'; // Prevent scrolling to bottom
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        const success = document.execCommand('copy');
-        document.body.removeChild(textarea);
-        if (!success) throw new Error('execCommand failed');
-      }
-      setCopyToast({ message: 'Copied!', visible: true });
-    } catch (err) {
-      setCopyToast({ message: 'Copy failed', visible: true });
-    }
-    setTimeout(() => setCopyToast({ message: '', visible: false }), 1500);
-  };
-
   return (
     <DashboardLayout>
-      {/* Copy Toast Notification */}
-      {copyToast.visible && (
-        <div className="fixed bottom-6 right-6 px-5 py-2 rounded-card border border-zinc-800 bg-surface-elevated text-foreground shadow-xl z-50 text-sm font-semibold animate-fade-in">
-          {copyToast.message}
-        </div>
-      )}
       <div className="px-8 pb-8 pt-2 space-y-6 animate-fade-in relative z-0">
         <CreateServiceModal
           isOpen={isCreateModalOpen}
@@ -428,7 +395,7 @@ export default function ServicesPage() {
                       )}
                     </button>
                     <button
-                      onClick={() => copyToClipboard(service.connectionString)}
+                      onClick={() => copyWithToast(service.connectionString)}
                       className="p-1.5 rounded-pill hover:bg-zinc-700 text-zinc-400"
                     >
                       <Copy className="h-3 w-3" />

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useDomain } from '@/hooks/useDomain';
+import { copyWithToast } from '@/lib/clipboard';
 import {
   Globe,
   Shield,
@@ -51,10 +52,6 @@ export function DomainConfigPanel() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
-
   if (isLoading) {
     return (
       <div className="bg-surface-elevated rounded-card p-card border border-zinc-800">
@@ -93,7 +90,7 @@ export function DomainConfigPanel() {
               <div className="flex items-center gap-2">
                 <span className="font-medium text-foreground">{domain.domain}</span>
                 <button
-                  onClick={() => copyToClipboard(domain.domain)}
+                  onClick={() => copyWithToast(domain.domain)}
                   className="p-1 hover:bg-zinc-700 rounded"
                   title="Copy domain"
                 >
@@ -122,7 +119,7 @@ export function DomainConfigPanel() {
                 <div className="flex items-center gap-2">
                   <span className="font-medium text-foreground">{serverIp}</span>
                   <button
-                    onClick={() => copyToClipboard(serverIp)}
+                    onClick={() => copyWithToast(serverIp)}
                     className="p-1 hover:bg-zinc-700 rounded"
                     title="Copy IP"
                   >
@@ -208,7 +205,7 @@ export function DomainConfigPanel() {
                   {serverIp}
                 </code>
                 <button
-                  onClick={() => copyToClipboard(serverIp)}
+                  onClick={() => copyWithToast(serverIp)}
                   className="p-2 hover:bg-zinc-700 rounded"
                   title="Copy IP"
                 >
@@ -281,7 +278,7 @@ export function DomainConfigPanel() {
                 {serverIp}
               </code>
               <button
-                onClick={() => copyToClipboard(serverIp)}
+                onClick={() => copyWithToast(serverIp)}
                 className="p-2 hover:bg-zinc-700 rounded"
                 title="Copy IP"
               >

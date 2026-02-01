@@ -557,6 +557,41 @@ chmod 0440 "$SUDOERS_FILE"
 log_success "Caddy sudoers configured"
 
 # ============================================================================
+# Domain Re-verification (if previously configured)
+# ============================================================================
+echo ""
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${BLUE}                        DOMAIN CONFIGURATION CHECK${NC}"
+echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Wait for server to be ready
+log_info "Waiting for server to be ready..."
+sleep 5
+
+# Check if a domain was previously configured and re-verify it
+DOMAIN_CHECK=$(curl -s http://127.0.0.1:3000/api/domain 2>/dev/null)
+if echo "$DOMAIN_CHECK" | grep -q '"domain"' && ! echo "$DOMAIN_CHECK" | grep -q '"domain":null'; then
+    CONFIGURED_DOMAIN=$(echo "$DOMAIN_CHECK" | grep -o '"domain":"[^"]*"' | head -1 | cut -d'"' -f4)
+    if [ -n "$CONFIGURED_DOMAIN" ]; then
+        log_info "Found previously configured domain: $CONFIGURED_DOMAIN"
+        log_info "Re-verifying domain configuration..."
+
+        VERIFY_RESULT=$(curl -s -X POST http://127.0.0.1:3000/api/domain/verify 2>/dev/null)
+        if echo "$VERIFY_RESULT" | grep -q '"success":true'; then
+            log_success "Domain re-verified and HTTPS configuration restored"
+        else
+            log_warning "Domain verification failed - HTTPS not active"
+            log_info "You can re-verify manually in Settings > Domain Configuration"
+        fi
+    fi
+else
+    log_info "No domain configured"
+    log_warning "⚠️  Running in HTTP mode (insecure)"
+    log_info "Configure a domain in Settings for HTTPS security"
+fi
+
+# ============================================================================
 # Final Status
 # ============================================================================
 echo ""
