@@ -20,8 +20,12 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      await login(username, password);
-      navigate("/");
+      const result = await login(username, password);
+      if (result.mustResetPassword) {
+        navigate("/reset-password");
+      } else {
+        navigate("/");
+      }
     } catch (err) {
       setError("Invalid username or password");
     } finally {

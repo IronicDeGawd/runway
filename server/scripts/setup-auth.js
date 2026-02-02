@@ -75,10 +75,12 @@ async function setup() {
     const jwtSecret = generateJwtSecret();
 
     // Create auth object matching AuthConfig interface
+    // mustResetPassword is false since user is setting their own password interactively
     const authData = {
       username: username,
       passwordHash: passwordHash,
-      jwtSecret: jwtSecret
+      jwtSecret: jwtSecret,
+      mustResetPassword: false
     };
 
     // Ensure data directory exists

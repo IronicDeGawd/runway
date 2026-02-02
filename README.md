@@ -18,6 +18,26 @@ Deploy React, Next.js, Node.js, and static sites from a single control panel.
 
 > **Note:** Currently only tested on **Ubuntu/Debian** systems. Other Linux distributions may work but are not officially supported. Windows and macOS are not supported for production deployments.
 
+## Installation
+
+### One-Line Install (Server)
+
+```bash
+curl -sSL https://raw.githubusercontent.com/IronicDeGawd/runway/main/bootstrap.sh | sudo bash
+```
+
+### CLI Tool
+
+Install the CLI globally via npm:
+
+```bash
+npm install -g runway-cli
+```
+
+[![npm](https://img.shields.io/npm/v/runway-cli?logo=npm&logoColor=white)](https://www.npmjs.com/package/runway-cli)
+
+---
+
 ## Runtime Support Status
 
 | Runtime | Build | Process | WebSocket | REST API | Env Mgmt | Serving |
@@ -78,7 +98,7 @@ Runway provides end-to-end application deployment with a CLI tool, web dashboard
 </tr>
 </table>
 
-## Architecture
+### Architecture
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
@@ -94,7 +114,7 @@ Runway provides end-to-end application deployment with a CLI tool, web dashboard
     └──────────┘   └──────────┘   └──────────┘
 ```
 
-## Components
+### Components
 
 | Component | Description | Tech Stack |
 |-----------|-------------|------------|
@@ -103,52 +123,11 @@ Runway provides end-to-end application deployment with a CLI tool, web dashboard
 | **Server** | Backend API & orchestration | ![Express](https://img.shields.io/badge/-Express-000?logo=express&logoColor=white&style=flat-square) ![SQLite](https://img.shields.io/badge/-SQLite-003B57?logo=sqlite&logoColor=white&style=flat-square) ![PM2](https://img.shields.io/badge/-PM2-2B037A?logo=pm2&logoColor=white&style=flat-square) |
 | **Shared** | Common TypeScript types | ![TypeScript](https://img.shields.io/badge/-TypeScript-3178C6?logo=typescript&logoColor=white&style=flat-square) |
 
-## Quick Start
-
-### Prerequisites
-
-- Node.js 18+
-- npm 8+
-- PM2 (for production)
-- Caddy (for reverse proxy)
-
-### Development Setup
-
-```bash
-# Clone the repository
-git clone https://github.com/IronicDeGawd/runway.git
-cd runway
-
-# Install dependencies
-npm install
-
-# Build all packages
-npm run build
-
-# Start development servers
-npm run dev
-```
-
-This starts:
-- Server on `http://localhost:3000`
-- UI on `http://localhost:8080` (proxies API requests to server)
-
 ---
 
 ## CLI
 
 The CLI enables deployments directly from your terminal.
-
-### Installation
-
-```bash
-# Build and link globally
-npm run build:cli
-cd cli && npm link
-
-# Verify installation
-runway --version
-```
 
 ### Usage
 
@@ -177,6 +156,13 @@ runway status my-app
 | `runway deploy` | Deploy current directory |
 | `runway list` | List all deployed projects |
 | `runway status <name>` | Get project status |
+| `runway logs <name>` | View project logs |
+| `runway restart <name>` | Restart a project |
+| `runway stop <name>` | Stop a project |
+| `runway delete <name>` | Delete a project |
+| `runway reset` | Reset CLI configuration |
+| `runway domain <name>` | Manage project domains |
+| `runway metrics <name>` | View project metrics |
 
 ### Deploy Options
 
@@ -203,19 +189,6 @@ The CLI auto-detects project types:
 
 The web dashboard for managing deployments.
 
-### Development
-
-```bash
-cd ui
-npm run dev      # http://localhost:8080
-```
-
-### Build
-
-```bash
-npm run build    # Creates dist/
-```
-
 ### Pages
 
 | Page | Description |
@@ -240,20 +213,6 @@ npm run build    # Creates dist/
 ## Server
 
 The backend API handling deployments and process management.
-
-### Development
-
-```bash
-cd server
-npm run dev      # http://localhost:3000
-```
-
-### Build
-
-```bash
-npm run build
-npm start
-```
 
 ### API Routes
 
@@ -304,22 +263,48 @@ Environment variables:
 
 ---
 
-## Production Deployment
+## Development Setup
 
-### One-Line Install
+### Prerequisites
+
+- Node.js 18+
+- npm 8+
+- PM2 (for production)
+- Caddy (for reverse proxy)
+
+### Getting Started
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/IronicDeGawd/runway/main/bootstrap.sh | sudo bash
+# Clone the repository
+git clone https://github.com/IronicDeGawd/runway.git
+cd runway
+
+# Install dependencies
+npm install
+
+# Build all packages
+npm run build
+
+# Start development servers
+npm run dev
 ```
 
-### Manual Installation
+This starts:
+- Server on `http://localhost:3000`
+- UI on `http://localhost:8080` (proxies API requests to server)
 
-1. Download release from GitHub
-2. Extract to `/opt/runway`
-3. Run `install.sh`
-4. Access via configured domain
+### Scripts
 
-### Security Modes
+| Script | Description |
+|--------|-------------|
+| `npm run dev` | Start all packages in development |
+| `npm run build` | Build all packages |
+| `npm run build:cli` | Build shared + CLI only |
+| `npm test` | Run tests |
+
+---
+
+## Security Modes
 
 | Mode | Use Case | Token Duration |
 |------|----------|----------------|
@@ -354,17 +339,6 @@ runway/
 │   └── src/types.ts
 └── package.json        # Root workspace config
 ```
-
----
-
-## Scripts
-
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start all packages in development |
-| `npm run build` | Build all packages |
-| `npm run build:cli` | Build shared + CLI only |
-| `npm test` | Run tests |
 
 ---
 

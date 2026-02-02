@@ -346,7 +346,8 @@ if [ ! -f "$INSTALL_DIR/data/auth.json" ]; then
 {
   "username": "admin",
   "passwordHash": "$ADMIN_HASH",
-  "jwtSecret": "$JWT_SECRET"
+  "jwtSecret": "$JWT_SECRET",
+  "mustResetPassword": true
 }
 EOF
         chown "$REAL_USER:$REAL_USER" "$INSTALL_DIR/data/auth.json"
