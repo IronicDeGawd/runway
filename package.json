@@ -15,5 +15,6 @@
   },
   "dependencies": {
     "@swc/core": "^1.15.11"
-  }
+  },
+  "version": "0.1.0"
 }
