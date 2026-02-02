@@ -33,6 +33,19 @@ export interface AuthResponse {
     expiresAt: string;
     tokenType: 'pairing' | 'standard';
     securityMode: SecurityMode;
+    mustResetPassword?: boolean;
+  };
+}
+
+export interface ResetPasswordResponse {
+  success: boolean;
+  message: string;
+  data: {
+    token: string;
+    expiresIn: number;
+    expiresAt: string;
+    tokenType: 'pairing' | 'standard';
+    securityMode: SecurityMode;
   };
 }
 
@@ -203,6 +216,28 @@ export class AuthService {
       }
       logger.error('Failed to refresh token');
       return null;
+    }
+  }
+
+  /**
+   * Reset password
+   */
+  async resetPassword(
+    currentPassword: string,
+    newPassword: string
+  ): Promise<ResetPasswordResponse['data']> {
+    try {
+      const response = await axios.post<ResetPasswordResponse>(
+        `${this.serverUrl}/api/cli/reset-password`,
+        { currentPassword, newPassword },
+        { timeout: 10000 }
+      );
+
+      logger.success('Password reset successfully');
+      return response.data.data;
+    } catch (error) {
+      this.handleError(error, 'Password reset failed');
+      throw error;
     }
   }
 

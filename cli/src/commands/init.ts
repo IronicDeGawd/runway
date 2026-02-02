@@ -140,12 +140,41 @@ export async function initCommand(options: InitOptions): Promise<void> {
       credentials.password
     );
 
-    // Save configuration with all auth data
-    setServerUrl(serverUrl);
-    setAuthData(authResult.token, authResult.expiresAt, authResult.securityMode);
+    // Check if password reset is required
+    if (authResult.mustResetPassword) {
+      logger.blank();
+      logger.warn('⚠️  Password reset required');
+      logger.info('You are using the default password. Please set a new password to continue.');
+      logger.blank();
 
-    logger.blank();
-    logger.success('Configuration saved successfully!');
+      // Prompt for new password
+      const resetResult = await promptPasswordReset(authService, credentials.password);
+
+      if (resetResult) {
+        // Save configuration with new token
+        setServerUrl(serverUrl);
+        setAuthData(resetResult.token, resetResult.expiresAt, resetResult.securityMode);
+
+        logger.blank();
+        logger.success('Password updated and configuration saved!');
+      } else {
+        // User skipped password reset, save with current token but warn
+        setServerUrl(serverUrl);
+        setAuthData(authResult.token, authResult.expiresAt, authResult.securityMode);
+
+        logger.blank();
+        logger.warn('Configuration saved, but password reset is still required.');
+        logger.dim('You will be prompted to reset your password on next login.');
+      }
+    } else {
+      // Save configuration with all auth data
+      setServerUrl(serverUrl);
+      setAuthData(authResult.token, authResult.expiresAt, authResult.securityMode);
+
+      logger.blank();
+      logger.success('Configuration saved successfully!');
+    }
+
     logger.blank();
     logger.info('You can now deploy projects with:');
     logger.dim('  runway deploy');
@@ -160,6 +189,70 @@ export async function initCommand(options: InitOptions): Promise<void> {
     // Error already logged by AuthService
     logger.blank();
     logger.dim('Check your credentials and try again.');
+  }
+}
+
+/**
+ * Prompt user to reset their password
+ */
+async function promptPasswordReset(
+  authService: AuthService,
+  currentPassword: string
+): Promise<{ token: string; expiresAt: string; securityMode: 'ip-http' | 'domain-https' } | null> {
+  const { resetNow } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'resetNow',
+      message: 'Would you like to reset your password now?',
+      default: true,
+    },
+  ]);
+
+  if (!resetNow) {
+    return null;
+  }
+
+  // Get new password with confirmation
+  const newPasswordAnswers = await inquirer.prompt([
+    {
+      type: 'password',
+      name: 'newPassword',
+      message: 'Enter new password (min. 6 characters):',
+      validate: (input: string) => {
+        if (input.length < 6) {
+          return 'Password must be at least 6 characters';
+        }
+        return true;
+      },
+    },
+    {
+      type: 'password',
+      name: 'confirmPassword',
+      message: 'Confirm new password:',
+      validate: (input: string, answers: { newPassword?: string }) => {
+        if (input !== answers?.newPassword) {
+          return 'Passwords do not match';
+        }
+        return true;
+      },
+    },
+  ]);
+
+  logger.info('Updating password...');
+  try {
+    const resetResult = await authService.resetPassword(
+      currentPassword,
+      newPasswordAnswers.newPassword
+    );
+
+    return {
+      token: resetResult.token,
+      expiresAt: resetResult.expiresAt,
+      securityMode: resetResult.securityMode,
+    };
+  } catch (error) {
+    logger.error('Failed to reset password. Please try again later.');
+    return null;
   }
 }
 
