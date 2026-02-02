@@ -51,6 +51,12 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // Check if user must reset password
+  const mustResetPassword = localStorage.getItem('mustResetPassword') === 'true';
+  if (mustResetPassword && location.pathname !== '/reset-password') {
+    return <Navigate to="/reset-password" replace />;
+  }
+
   // Token is valid and not expired
   return children;
 }
