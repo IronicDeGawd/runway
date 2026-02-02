@@ -7,6 +7,7 @@ import { AppError } from '../middleware/errorHandler';
 import { getAuthConfig } from '../config/auth';
 import { getTokenPolicy, getTokenExpirySeconds } from '../config/tokenPolicy';
 import { systemRepository } from '../repositories/systemRepository';
+import { authRepository } from '../repositories';
 import { rsaKeyManager } from '../services/rsaKeyManager';
 import { dnsVerifier } from '../services/dnsVerifier';
 import { logger } from '../utils/logger';
@@ -195,6 +196,7 @@ router.post('/auth', async (req, res, next) => {
         expiresAt,
         tokenType: policy.type,
         securityMode,
+        mustResetPassword: config.mustResetPassword ?? false,
       },
     });
   } catch (error) {
@@ -267,6 +269,73 @@ router.post('/refresh', async (req, res, next) => {
     } catch (error) {
       return next(new AppError('Invalid or expired token', 401));
     }
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Schema for password reset
+const ResetPasswordSchema = z.object({
+  body: z.object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+  }),
+});
+
+/**
+ * POST /api/cli/reset-password
+ * Reset password from CLI
+ */
+router.post('/reset-password', validateRequest(ResetPasswordSchema), async (req, res, next) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const config = getAuthConfig();
+
+    if (!config) {
+      return next(new AppError('Authentication not initialized', 503));
+    }
+
+    // Verify current password
+    const isMatch = await bcrypt.compare(currentPassword, config.passwordHash);
+    if (!isMatch) {
+      return next(new AppError('Current password is incorrect', 401));
+    }
+
+    // Hash new password
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+
+    // Update password and clear the reset flag
+    authRepository.updatePassword(newPasswordHash, true);
+
+    logger.info(`CLI user ${config.username} reset their password`);
+
+    // Generate new token
+    const securityMode = systemRepository.getSecurityMode();
+    const policy = getTokenPolicy(securityMode);
+    const expiresIn = getTokenExpirySeconds(securityMode);
+    const token = jwt.sign(
+      {
+        username: config.username,
+        source: 'cli',
+        tokenType: policy.type,
+      },
+      config.jwtSecret,
+      { expiresIn }
+    );
+
+    const expiresAt = new Date(Date.now() + policy.maxAge).toISOString();
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully',
+      data: {
+        token,
+        expiresIn: policy.maxAge,
+        expiresAt,
+        tokenType: policy.type,
+        securityMode,
+      },
+    });
   } catch (error) {
     next(error);
   }

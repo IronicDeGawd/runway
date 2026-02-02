@@ -249,6 +249,15 @@ class DatabaseService {
             CHECK(upload_type IN ('full', 'dist', 'build'));
           ALTER TABLE deployments ADD COLUMN env_injected INTEGER NOT NULL DEFAULT 0;
         `
+      },
+      {
+        name: '005_must_reset_password',
+        sql: `
+          -- Add must_reset_password flag to auth table
+          -- When true, user must reset password on first login
+          -- Default is 0 (false) for existing users to not disrupt them
+          ALTER TABLE auth ADD COLUMN must_reset_password INTEGER NOT NULL DEFAULT 0;
+        `
       }
     ];
   }
