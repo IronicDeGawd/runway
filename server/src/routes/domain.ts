@@ -247,4 +247,20 @@ router.get('/status', async (req, res, next) => {
   }
 });
 
+/**
+ * GET /api/domain/verify-challenge
+ * Public endpoint for HTTPS reachability verification.
+ * The DNS verifier generates a nonce and fetches this endpoint through the domain
+ * to prove the domain routes traffic to this server (supports Cloudflare proxy etc.)
+ * No auth required — the token itself is the authentication.
+ */
+router.get('/verify-challenge', (req, res) => {
+  const token = req.query.token as string;
+  if (!token || !dnsVerifier.validateChallenge(token)) {
+    res.status(404).json({ success: false, error: 'Invalid or expired challenge token' });
+    return;
+  }
+  res.json({ runway: true, token });
+});
+
 export const domainRouter = router;
