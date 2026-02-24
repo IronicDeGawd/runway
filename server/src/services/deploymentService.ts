@@ -223,28 +223,53 @@ export class DeploymentService {
         logger.info('Flattened nested directory structure');
       }
 
-      // 2. Validate package.json exists
-      const pkgJsonPath = path.join(stagingDir, 'package.json');
-      if (!await fs.pathExists(pkgJsonPath)) {
-        throw new AppError('Invalid project: package.json missing', 400);
+      // 2. Validate package.json exists (except for static sites)
+      if (type !== 'static') {
+        const pkgJsonPath = path.join(stagingDir, 'package.json');
+        if (!await fs.pathExists(pkgJsonPath)) {
+          throw new AppError('Invalid project: package.json missing', 400);
+        }
+      }
+
+      // 2.5. Static site: ensure index.html exists
+      if (type === 'static') {
+        const indexPath = path.join(stagingDir, 'index.html');
+        if (!await fs.pathExists(indexPath)) {
+          // Find all HTML files (excluding __MACOSX and hidden dirs)
+          const allFiles = await fs.readdir(stagingDir);
+          const htmlFiles = allFiles.filter((f: string) => f.endsWith('.html') || f.endsWith('.htm'));
+          if (htmlFiles.length === 1) {
+            const srcFile = path.join(stagingDir, htmlFiles[0]);
+            await fs.copy(srcFile, indexPath);
+            logger.info(`Static site: renamed ${htmlFiles[0]} to index.html`);
+          } else if (htmlFiles.length === 0) {
+            throw new AppError('Static project has no HTML files. Include at least one .html file.', 400);
+          } else {
+            throw new AppError(`Static project has multiple HTML files (${htmlFiles.join(', ')}) but no index.html. Please include an index.html as the entry point.`, 400);
+          }
+        }
       }
 
       // 3. Detect package manager
-      const pkgManager = await this.detectPackageManager(stagingDir);
+      const pkgManager = type !== 'static' ? await this.detectPackageManager(stagingDir) : 'npm';
       logger.info(`Detected package manager: ${pkgManager}`);
 
-      // 4. Install dependencies
-      reportProgress('install', 'Installing dependencies...', 25);
-      await this.installDependencies(stagingDir, pkgManager);
-      logger.info('✅ Dependencies installed');
+      // 4. Install dependencies (skip for static sites)
+      if (type !== 'static') {
+        reportProgress('install', 'Installing dependencies...', 25);
+        await this.installDependencies(stagingDir, pkgManager);
+        logger.info('✅ Dependencies installed');
+      }
 
-      // 5. Apply project-specific patches (Router, Configs, etc.)
-      reportProgress('patch', 'Applying patches...', 40);
-      await patcherService.patchProject(stagingDir, type, {
-        projectId: deployId, // Use the deployment ID for logging context
-        projectName,
-        deploymentId: deployId
-      });
+      // 5. Apply project-specific patches (Router, Configs, etc.) — skip for static
+      if (type !== 'static') {
+        reportProgress('patch', 'Applying patches...', 40);
+        await patcherService.patchProject(stagingDir, type, {
+          projectId: deployId, // Use the deployment ID for logging context
+          projectName,
+          deploymentId: deployId
+        });
+      }
 
       // 6. Build the project (if required) - static sites don't need building
       if (type === 'react' || type === 'next') {
@@ -294,12 +319,39 @@ export class DeploymentService {
         logger.info('Stopped existing PM2 process');
       }
 
-      // 9. Atomic directory swap
+      // 9. Atomic directory swap (preserving env and logs)
       const targetDir = path.join(APPS_DIR, projectId);
+      let envBackupPath: string | null = null;
+      let logsBackupPath: string | null = null;
       if (await fs.pathExists(targetDir)) {
+        // Backup .env.enc before removing old directory
+        const envEncPath = path.join(targetDir, '.env.enc');
+        if (await fs.pathExists(envEncPath)) {
+          envBackupPath = path.join(APPS_DIR, `${projectId}__env_backup.enc`);
+          await fs.copy(envEncPath, envBackupPath);
+          logger.info('Backed up encrypted environment variables');
+        }
+        // Backup logs directory
+        const logsDir = path.join(targetDir, 'logs');
+        if (await fs.pathExists(logsDir)) {
+          logsBackupPath = path.join(APPS_DIR, `${projectId}__logs_backup`);
+          await fs.copy(logsDir, logsBackupPath);
+          logger.info('Backed up logs directory');
+        }
         await fs.remove(targetDir); 
       }
       await fs.move(stagingDir, targetDir);
+      // Restore backups
+      if (envBackupPath && await fs.pathExists(envBackupPath)) {
+        await fs.copy(envBackupPath, path.join(targetDir, '.env.enc'));
+        await fs.remove(envBackupPath);
+        logger.info('Restored encrypted environment variables');
+      }
+      if (logsBackupPath && await fs.pathExists(logsBackupPath)) {
+        await fs.copy(logsBackupPath, path.join(targetDir, 'logs'));
+        await fs.remove(logsBackupPath);
+        logger.info('Restored logs directory');
+      }
       logger.info(`Deployed to ${targetDir}`);
 
       // 10. Register / Update Project
@@ -511,14 +563,34 @@ export class DeploymentService {
         logger.info('Flattened nested directory structure');
       }
 
-      // 2. Validate package.json exists
-      const pkgJsonPath = path.join(stagingDir, 'package.json');
-      if (!await fs.pathExists(pkgJsonPath)) {
-        throw new AppError('Invalid project: package.json missing', 400);
+      // 2. Validate package.json exists (except for static sites)
+      if (type !== 'static') {
+        const pkgJsonPath = path.join(stagingDir, 'package.json');
+        if (!await fs.pathExists(pkgJsonPath)) {
+          throw new AppError('Invalid project: package.json missing', 400);
+        }
+      }
+
+      // 2.5. Static site: ensure index.html exists
+      if (type === 'static') {
+        const indexPath = path.join(stagingDir, 'index.html');
+        if (!await fs.pathExists(indexPath)) {
+          const allFiles = await fs.readdir(stagingDir);
+          const htmlFiles = allFiles.filter((f: string) => f.endsWith('.html') || f.endsWith('.htm'));
+          if (htmlFiles.length === 1) {
+            const srcFile = path.join(stagingDir, htmlFiles[0]);
+            await fs.copy(srcFile, indexPath);
+            logger.info(`Static site: renamed ${htmlFiles[0]} to index.html`);
+          } else if (htmlFiles.length === 0) {
+            throw new AppError('Static project has no HTML files. Include at least one .html file.', 400);
+          } else {
+            throw new AppError(`Static project has multiple HTML files (${htmlFiles.join(', ')}) but no index.html. Please include an index.html as the entry point.`, 400);
+          }
+        }
       }
 
       // 3. Detect package manager
-      const pkgManager = await this.detectPackageManager(stagingDir);
+      const pkgManager = type !== 'static' ? await this.detectPackageManager(stagingDir) : 'npm';
       logger.info(`Detected package manager: ${pkgManager}`);
 
       // 4. For Next.js and Node.js, install production dependencies only
@@ -595,12 +667,39 @@ export class DeploymentService {
         logger.info('Stopped existing PM2 process');
       }
 
-      // 8. Atomic directory swap
+      // 8. Atomic directory swap (preserving env and logs)
       const targetDir = path.join(APPS_DIR, projectId);
+      let envBackupPath: string | null = null;
+      let logsBackupPath: string | null = null;
       if (await fs.pathExists(targetDir)) {
+        // Backup .env.enc before removing old directory
+        const envEncPath = path.join(targetDir, '.env.enc');
+        if (await fs.pathExists(envEncPath)) {
+          envBackupPath = path.join(APPS_DIR, `${projectId}__env_backup.enc`);
+          await fs.copy(envEncPath, envBackupPath);
+          logger.info('Backed up encrypted environment variables');
+        }
+        // Backup logs directory
+        const logsDir = path.join(targetDir, 'logs');
+        if (await fs.pathExists(logsDir)) {
+          logsBackupPath = path.join(APPS_DIR, `${projectId}__logs_backup`);
+          await fs.copy(logsDir, logsBackupPath);
+          logger.info('Backed up logs directory');
+        }
         await fs.remove(targetDir);
       }
       await fs.move(stagingDir, targetDir);
+      // Restore backups
+      if (envBackupPath && await fs.pathExists(envBackupPath)) {
+        await fs.copy(envBackupPath, path.join(targetDir, '.env.enc'));
+        await fs.remove(envBackupPath);
+        logger.info('Restored encrypted environment variables');
+      }
+      if (logsBackupPath && await fs.pathExists(logsBackupPath)) {
+        await fs.copy(logsBackupPath, path.join(targetDir, 'logs'));
+        await fs.remove(logsBackupPath);
+        logger.info('Restored logs directory');
+      }
       logger.info(`Deployed to ${targetDir}`);
 
       // 8.5. Extract .env from Node.js projects and store in database
@@ -754,6 +853,14 @@ export class DeploymentService {
     logger.info(`Rebuilding project ${project.name} (${projectId})`);
 
     try {
+      // 0. Re-install dependencies if node_modules is missing (cleaned up after initial deploy)
+      const nodeModulesPath = path.join(projectDir, 'node_modules');
+      if (!await fs.pathExists(nodeModulesPath)) {
+        logger.info('node_modules missing, re-installing dependencies before rebuild...');
+        await this.installDependencies(projectDir, project.pkgManager);
+        logger.info('✅ Dependencies re-installed for rebuild');
+      }
+
       // 1. Build the project
       await this.buildProject(
         projectDir,
