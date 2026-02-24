@@ -454,7 +454,9 @@ mkdir -p "$CADDY_DATA_DIR/sites"
 chown -R "$REAL_USER:$REAL_USER" "$CADDY_DATA_DIR"
 
 log_info "Generating main Caddyfile with WebSocket support..."
-cat > "$CADDY_DATA_DIR/Caddyfile" << 'EOF'
+
+# Generate Runway-managed config as a string
+RUNWAY_CONFIG='# BEGIN RUNWAY MANAGED — Do not edit this section manually
 {
   admin localhost:2019
   auto_https off
@@ -503,7 +505,29 @@ cat > "$CADDY_DATA_DIR/Caddyfile" << 'EOF'
     encode gzip
   }
 }
-EOF
+# END RUNWAY MANAGED'
+
+# Check if existing Caddyfile has non-Runway (user) config blocks to preserve
+EXISTING_CADDYFILE="$CADDY_DATA_DIR/Caddyfile"
+USER_BLOCKS=""
+
+if [ -f "$EXISTING_CADDYFILE" ]; then
+    # Extract everything outside the RUNWAY MANAGED markers
+    USER_BLOCKS=$(sed -n '/^# BEGIN RUNWAY MANAGED/,/^# END RUNWAY MANAGED/!p' "$EXISTING_CADDYFILE" | sed '/^$/d')
+    
+    if [ -n "$USER_BLOCKS" ]; then
+        log_info "Preserving existing non-Runway configuration blocks"
+    fi
+fi
+
+# Write combined config
+if [ -n "$USER_BLOCKS" ]; then
+    printf '%s\n\n%s\n' "$RUNWAY_CONFIG" "$USER_BLOCKS" > "$CADDY_DATA_DIR/Caddyfile"
+    log_success "Main Caddyfile created with preserved user config at $CADDY_DATA_DIR/Caddyfile"
+else
+    echo "$RUNWAY_CONFIG" > "$CADDY_DATA_DIR/Caddyfile"
+    log_success "Main Caddyfile created at $CADDY_DATA_DIR/Caddyfile"
+fi
 
 chmod 644 "$CADDY_DATA_DIR/Caddyfile"
 log_success "Main Caddyfile created at $CADDY_DATA_DIR/Caddyfile"
