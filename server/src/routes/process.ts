@@ -97,4 +97,40 @@ router.delete('/:id', requireAuth, async (req, res, next) => {
   }
 });
 
+// Get PM2/project logs
+router.get('/:id/logs', requireAuth, async (req, res, next) => {
+  try {
+    const project = await getProject(req.params.id);
+    const lines = Math.min(parseInt(req.query.lines as string) || 100, 1000);
+    const logType = (req.query.type as string) || 'all'; // 'out', 'error', or 'all'
+
+    const APPS_DIR = path.resolve(process.cwd(), '../apps');
+    const logsDir = path.join(APPS_DIR, project.id, 'logs');
+
+    const result: { stdout?: string; stderr?: string } = {};
+
+    const readLastLines = async (filePath: string, n: number): Promise<string> => {
+      try {
+        if (!await fs.pathExists(filePath)) return '';
+        const content = await fs.readFile(filePath, 'utf-8');
+        const allLines = content.split('\n');
+        return allLines.slice(-n).join('\n');
+      } catch {
+        return '';
+      }
+    };
+
+    if (logType === 'out' || logType === 'all') {
+      result.stdout = await readLastLines(path.join(logsDir, 'out.log'), lines);
+    }
+    if (logType === 'error' || logType === 'all') {
+      result.stderr = await readLastLines(path.join(logsDir, 'error.log'), lines);
+    }
+
+    res.json({ success: true, data: result });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export const processRouter = router;
