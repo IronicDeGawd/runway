@@ -43,6 +43,7 @@ export interface DeployAnalysis {
   // Package state
   hasPackageJson: boolean;
   packageManager: PackageManager;
+  alternativePackageManagers?: PackageManager[];
   packageJson?: PackageJson;
 
   // Build state (generic detection)

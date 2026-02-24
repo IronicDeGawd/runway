@@ -10,6 +10,7 @@ import {
 } from './detection/types';
 import { BuildOutputDetector } from './detection/buildOutputDetector';
 import { StaticSiteDetector } from './detection/staticSiteDetector';
+import { BuildDetector } from './buildDetector';
 
 /**
  * Orchestrates package analysis for deployment decisions
@@ -53,8 +54,14 @@ export class DeployAnalyzer {
       hasStartScript = !!packageJson?.scripts?.start;
     }
 
-    // Detect package manager
-    const packageManager = await this.detectPackageManager(extractedPath, hasPackageJson);
+    // Detect package manager(s)
+    let packageManager = await this.detectPackageManager(extractedPath, hasPackageJson);
+    let alternativePackageManagers: string[] = [];
+    if (hasPackageJson) {
+      const pmResult = await BuildDetector.detectAllPackageManagers(extractedPath);
+      packageManager = pmResult.detected;
+      alternativePackageManagers = pmResult.alternatives;
+    }
 
     // Generic build output detection (no framework knowledge)
     const buildResult = await BuildOutputDetector.detect(extractedPath);
@@ -116,6 +123,7 @@ export class DeployAnalyzer {
       // Package state
       hasPackageJson,
       packageManager,
+      alternativePackageManagers: alternativePackageManagers.length > 0 ? alternativePackageManagers as any : undefined,
       packageJson,
 
       // Build state
