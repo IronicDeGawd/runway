@@ -15,7 +15,7 @@ function ConfigureServiceModal({
   service: Service | null;
   isOpen: boolean;
   onClose: () => void;
-  onConfigure: (type: string, config: { port?: number; credentials?: { username?: string; password?: string; database?: string } }) => Promise<void>;
+  onConfigure: (name: string, config: { port?: number; credentials?: { username?: string; password?: string; database?: string } }) => Promise<void>;
 }) {
   const [port, setPort] = useState(service?.port || 5432);
   const [username, setUsername] = useState('');
@@ -51,7 +51,7 @@ function ConfigureServiceModal({
         if (database) config.credentials.database = database;
       }
 
-      await onConfigure(service.type, config);
+      await onConfigure(service.id, config);
       onClose();
     } catch (error) {
       // Error handled by hook
@@ -179,15 +179,18 @@ function CreateServiceModal({
 }: {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (type: string) => Promise<void>;
+  onCreate: (type: string, name: string) => Promise<void>;
 }) {
   const [selectedType, setSelectedType] = useState<string>('postgres');
+  const [serviceName, setServiceName] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
+    if (!serviceName.trim()) return;
     try {
       setIsSubmitting(true);
-      await onCreate(selectedType);
+      await onCreate(selectedType, serviceName.trim());
+      setServiceName('');
       onClose();
     } catch (error) {
       // Error handled by hook
@@ -217,6 +220,17 @@ function CreateServiceModal({
             </div>
 
             <div className="p-6 space-y-6">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-400">Service Name</label>
+                <input
+                  type="text"
+                  value={serviceName}
+                  onChange={(e) => setServiceName(e.target.value)}
+                  placeholder={selectedType === 'postgres' ? 'my-main-db' : 'my-cache'}
+                  className="w-full px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
+                />
+              </div>
+
               <div className="space-y-4">
                 <label className="text-sm font-medium text-zinc-400">Select Service Type</label>
                 <div className="grid grid-cols-2 gap-4">
@@ -262,7 +276,7 @@ function CreateServiceModal({
               </button>
               <button
                 onClick={handleSubmit}
-                disabled={isSubmitting}
+                disabled={isSubmitting || !serviceName.trim()}
                 data-testid="create-service-submit"
                 className="flex items-center gap-2 px-6 py-2 text-sm font-semibold text-primary-foreground bg-neon rounded-pill hover:bg-neon-hover disabled:opacity-50 disabled:cursor-not-allowed shadow-neon-glow"
               >
@@ -280,9 +294,10 @@ function CreateServiceModal({
               </button>
             </div>
           </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+        </div >
+      )
+      }
+    </AnimatePresence >
   );
 }
 
