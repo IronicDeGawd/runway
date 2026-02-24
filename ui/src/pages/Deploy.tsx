@@ -45,6 +45,34 @@ export default function DeployPage() {
   // Derive current step index from hook state
   const stepIndex = steps.findIndex((s) => s.id === state.step);
 
+  // Bulk env paste handler
+  const handleBulkPaste = useCallback((text: string) => {
+    const lines = text.split('\n');
+    const parsed: { name: string; value: string }[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx > 0) {
+        const key = trimmed.substring(0, eqIdx).trim().toUpperCase().replace(/[^A-Z0-9_]/g, '');
+        const val = trimmed.substring(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+        if (key) parsed.push({ name: key, value: val });
+      }
+    }
+    if (parsed.length > 0) {
+      setEnvVars(prev => [...prev.filter(e => e.name.trim()), ...parsed]);
+      setShowEnvVars(true);
+    }
+  }, []);
+
+  const handleInputPaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (text && text.includes('=') && text.includes('\n')) {
+      e.preventDefault();
+      handleBulkPaste(text);
+    }
+  }, [handleBulkPaste]);
+
   // Sync hook state with local form if needed, or just drive UI from hook
   // We need to keep input state local until submission
 
@@ -338,7 +366,7 @@ export default function DeployPage() {
                   {showEnvVars && (
                     <div className="space-y-3 pt-3">
                       <p className="text-sm text-zinc-500">
-                        Set environment variables for your project. You can also add these later in project settings.
+                        Set environment variables for your project. You can also paste KEY=VALUE pairs.
                       </p>
 
                       {envVars.map((envVar, index) => (
@@ -354,6 +382,7 @@ export default function DeployPage() {
                                   : v
                               ));
                             }}
+                            onPaste={handleInputPaste}
                             className="flex-1 px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500"
                           />
                           <input
@@ -365,6 +394,7 @@ export default function DeployPage() {
                                 i === index ? { ...v, value: e.target.value } : v
                               ));
                             }}
+                            onPaste={handleInputPaste}
                             className="flex-[2] px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500"
                           />
                           <button
@@ -434,6 +464,27 @@ export default function DeployPage() {
                       <p className="text-foreground font-medium">{state.analysis.serveMethod === 'caddy-static' ? 'Static Files' : 'PM2 Proxy'}</p>
                     </div>
                   </div>
+
+                  {/* Package Manager Picker (when multiple lock files detected) */}
+                  {state.analysis.alternativePackageManagers && state.analysis.alternativePackageManagers.length > 0 && (
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-inner p-4">
+                      <p className="text-sm text-yellow-400 font-medium mb-2">Multiple lock files detected</p>
+                      <p className="text-xs text-zinc-400 mb-3">Select the package manager to use for this deployment:</p>
+                      <div className="flex gap-2">
+                        {[state.analysis.packageManager, ...state.analysis.alternativePackageManagers].map((pm) => (
+                          <span
+                            key={pm}
+                            className={`px-3 py-1.5 rounded-pill text-sm font-medium ${pm === state.analysis?.packageManager
+                                ? 'bg-neon text-primary-foreground'
+                                : 'bg-zinc-700 text-zinc-300'
+                              }`}
+                          >
+                            {pm}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Warnings */}
                   {state.analysis.warnings && state.analysis.warnings.length > 0 && (
@@ -590,7 +641,7 @@ export default function DeployPage() {
                 <>
                   <span>
                     {state.step === 'configure' ? 'Analyze Project' :
-                     state.step === 'analyze' ? 'Start Deployment' : 'Continue'}
+                      state.step === 'analyze' ? 'Start Deployment' : 'Continue'}
                   </span>
                   <ArrowRight className="h-4 w-4" />
                 </>

@@ -113,13 +113,38 @@ export class BuildDetector {
    * Detect package manager from lock files
    */
   static async detectPackageManager(projectDir: string): Promise<'npm' | 'yarn' | 'pnpm'> {
+    const result = await this.detectAllPackageManagers(projectDir);
+    return result.detected;
+  }
+
+  /**
+   * Detect all package managers from lock files.
+   * Returns the primary detected one and any alternatives.
+   */
+  static async detectAllPackageManagers(projectDir: string): Promise<{
+    detected: 'npm' | 'yarn' | 'pnpm';
+    alternatives: ('npm' | 'yarn' | 'pnpm')[];
+  }> {
+    const found: ('npm' | 'yarn' | 'pnpm')[] = [];
+
     if (await fs.pathExists(path.join(projectDir, 'pnpm-lock.yaml'))) {
-      return 'pnpm';
+      found.push('pnpm');
     }
     if (await fs.pathExists(path.join(projectDir, 'yarn.lock'))) {
-      return 'yarn';
+      found.push('yarn');
     }
-    return 'npm';
+    if (await fs.pathExists(path.join(projectDir, 'package-lock.json'))) {
+      found.push('npm');
+    }
+
+    // If no lock files found, default to npm
+    if (found.length === 0) {
+      return { detected: 'npm', alternatives: [] };
+    }
+
+    const detected = found[0];
+    const alternatives = found.slice(1);
+    return { detected, alternatives };
   }
 
   /**

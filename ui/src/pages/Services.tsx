@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { DashboardLayout } from '@/components/DashboardLayout';
-import { useServices, Service } from '@/hooks/useServices';
-import { Database, Server, Copy, Eye, EyeOff, Plus, Play, Square, ArrowLeft, Filter, X, Settings } from 'lucide-react';
+import { useServices, useExternalContainers, Service } from '@/hooks/useServices';
+import { Database, Server, Copy, Eye, EyeOff, Plus, Play, Square, ArrowLeft, Filter, X, Settings, Box, Info, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { copyWithToast } from '@/lib/clipboard';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -288,6 +288,7 @@ function CreateServiceModal({
 
 export default function ServicesPage() {
   const { services, isLoading, startService, stopService, createService, configureService } = useServices();
+  const { containers: externalContainers, isLoading: isLoadingExternal, startContainer, stopContainer, restartContainer } = useExternalContainers();
   const [showConnStrings, setShowConnStrings] = useState<Record<string, boolean>>({});
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [serviceToConfig, setServiceToConfig] = useState<Service | null>(null);
@@ -354,131 +355,202 @@ export default function ServicesPage() {
             </div>
           </div>
         ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {services.map((service) => (
-            <div key={service.id} className="bg-surface-elevated rounded-card p-card border border-zinc-800">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-element bg-zinc-800 border border-zinc-700">
-                    {getServiceIcon(service.type)}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {services.map((service) => (
+              <div key={service.id} className="bg-surface-elevated rounded-card p-card border border-zinc-800">
+                <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-element bg-zinc-800 border border-zinc-700">
+                      {getServiceIcon(service.type)}
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-foreground">{service.name}</h3>
+                      <p className="text-sm text-zinc-500 capitalize">{service.type}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-foreground">{service.name}</h3>
-                    <p className="text-sm text-zinc-500 capitalize">{service.type}</p>
+                  <div className={cn(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-pill text-xs font-medium",
+                    service.status === "running" ? "bg-green-600/20 text-green-400" : "bg-zinc-700 text-zinc-400"
+                  )}>
+                    <span className={cn(
+                      "h-1.5 w-1.5 rounded-pill",
+                      service.status === "running" && "bg-green-500 animate-pulse"
+                    )} />
+                    {service.status}
                   </div>
                 </div>
-                <div className={cn(
-                  "flex items-center gap-1.5 px-2.5 py-1 rounded-pill text-xs font-medium",
-                  service.status === "running" ? "bg-green-600/20 text-green-400" : "bg-zinc-700 text-zinc-400"
-                )}>
-                  <span className={cn(
-                    "h-1.5 w-1.5 rounded-pill",
-                    service.status === "running" && "bg-green-500 animate-pulse"
-                  )} />
-                  {service.status}
-                </div>
-              </div>
 
-              {/* Connection String */}
-              <div className="p-3 rounded-element bg-surface-muted border border-zinc-700 mb-4">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-xs text-zinc-500">Connection String</span>
-                  <div className="flex gap-1">
-                    <button
-                      onClick={() => toggleConnString(service.id)}
-                      className="p-1.5 rounded-pill hover:bg-zinc-700 text-zinc-400"
-                    >
-                      {showConnStrings[service.id] ? (
-                        <EyeOff className="h-3 w-3" />
-                      ) : (
-                        <Eye className="h-3 w-3" />
-                      )}
-                    </button>
-                    <button
-                      onClick={() => copyWithToast(service.connectionString)}
-                      className="p-1.5 rounded-pill hover:bg-zinc-700 text-zinc-400"
-                    >
-                      <Copy className="h-3 w-3" />
-                    </button>
+                {/* Connection String */}
+                <div className="p-3 rounded-element bg-surface-muted border border-zinc-700 mb-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs text-zinc-500">Connection String</span>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => toggleConnString(service.id)}
+                        className="p-1.5 rounded-pill hover:bg-zinc-700 text-zinc-400"
+                      >
+                        {showConnStrings[service.id] ? (
+                          <EyeOff className="h-3 w-3" />
+                        ) : (
+                          <Eye className="h-3 w-3" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => copyWithToast(service.connectionString)}
+                        className="p-1.5 rounded-pill hover:bg-zinc-700 text-zinc-400"
+                      >
+                        <Copy className="h-3 w-3" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-                <p className="font-mono text-xs text-zinc-300 truncate">
-                  {showConnStrings[service.id]
-                    ? service.connectionString
-                    : service.connectionString.replace(/:[^:@]+@/, ':****@')}
-                </p>
-              </div>
-
-              {/* Stats */}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <span className="text-xs text-zinc-500">Port</span>
-                  <p className="font-medium text-foreground">{service.port}</p>
-                </div>
-                <div>
-                  <span className="text-xs text-zinc-500">Memory</span>
-                  <p className="font-medium text-foreground">
-                    {service.memory || 0} MB
+                  <p className="font-mono text-xs text-zinc-300 truncate">
+                    {showConnStrings[service.id]
+                      ? service.connectionString
+                      : service.connectionString.replace(/:[^:@]+@/, ':****@')}
                   </p>
                 </div>
-              </div>
 
-              {/* Actions */}
-              <div className="flex gap-2 pt-4 border-t border-zinc-800">
-                {service.status === 'running' ? (
+                {/* Stats */}
+                <div className="grid grid-cols-2 gap-4 mb-4">
+                  <div>
+                    <span className="text-xs text-zinc-500">Port</span>
+                    <p className="font-medium text-foreground">{service.port}</p>
+                  </div>
+                  <div>
+                    <span className="text-xs text-zinc-500">Memory</span>
+                    <p className="font-medium text-foreground">
+                      {service.memory || 0} MB
+                    </p>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="flex gap-2 pt-4 border-t border-zinc-800">
+                  {service.status === 'running' ? (
+                    <button
+                      onClick={() => stopService(service.id)}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-pill bg-zinc-800 text-foreground border border-zinc-700 hover:bg-zinc-700 text-sm"
+                    >
+                      <Square className="h-4 w-4" />
+                      Stop
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => startService(service.id)}
+                      className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon-hover text-sm"
+                    >
+                      <Play className="h-4 w-4" />
+                      Start
+                    </button>
+                  )}
                   <button
-                    onClick={() => stopService(service.id)}
+                    onClick={() => setServiceToConfig(service)}
                     className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-pill bg-zinc-800 text-foreground border border-zinc-700 hover:bg-zinc-700 text-sm"
                   >
-                    <Square className="h-4 w-4" />
-                    Stop
+                    <Settings className="h-4 w-4" />
+                    Configure
                   </button>
-                ) : (
-                  <button
-                    onClick={() => startService(service.id)}
-                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon-hover text-sm"
-                  >
-                    <Play className="h-4 w-4" />
-                    Start
-                  </button>
-                )}
-                <button
-                  onClick={() => setServiceToConfig(service)}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-pill bg-zinc-800 text-foreground border border-zinc-700 hover:bg-zinc-700 text-sm"
-                >
-                  <Settings className="h-4 w-4" />
-                  Configure
-                </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-        )}
-
-        {services.length === 0 && !isLoading && (
-          <div className="bg-surface-elevated rounded-card p-12 text-center border border-zinc-800">
-            <div className="max-w-md mx-auto space-y-4">
-              <div className="w-20 h-20 mx-auto rounded-pill bg-zinc-800 flex items-center justify-center">
-                <Database className="w-10 h-10 text-zinc-400" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-semibold text-foreground mb-2">No services configured yet</h3>
-                <p className="text-zinc-400">
-                  Easily deploy managed databases like PostgreSQL and Redis to power your applications
-                </p>
-              </div>
-              <div className="flex items-center justify-center gap-3 pt-4">
-                <button
-                  onClick={() => setIsCreateModalOpen(true)}
-                  className="flex items-center gap-2 px-6 py-3 rounded-pill bg-neon text-primary-foreground font-semibold hover:bg-neon-hover transition-colors shadow-neon-glow"
-                >
-                  <Plus className="w-5 h-5" />
-                  <span>Create Service</span>
-                </button>
-              </div>
-            </div>
+            ))}
           </div>
         )}
+
+        {/* Custom Services (External Docker Containers) */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-xl font-semibold text-foreground">Custom Services</h2>
+            <span
+              title="Not managed by Runway — these are Docker containers running on the host that Runway did not deploy. Runway can only start, stop, or restart them."
+              className="flex items-center gap-1 px-2 py-0.5 rounded-pill bg-zinc-800 border border-zinc-700 text-xs text-zinc-400 cursor-help"
+            >
+              <Info className="w-3 h-3" />
+              Not managed by Runway
+            </span>
+          </div>
+
+          {isLoadingExternal ? (
+            <div className="bg-surface-elevated rounded-card p-8 text-center border border-zinc-800">
+              <div className="flex items-center justify-center gap-3 text-zinc-400">
+                <div className="w-5 h-5 border-2 border-zinc-500 border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm">Scanning Docker containers...</span>
+              </div>
+            </div>
+          ) : externalContainers.length === 0 ? (
+            <div className="bg-surface-elevated rounded-card p-8 text-center border border-zinc-800 border-dashed">
+              <div className="flex flex-col items-center gap-2 text-zinc-500">
+                <Box className="w-8 h-8" />
+                <p className="text-sm">No external Docker containers found</p>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {externalContainers.map((container) => (
+                <div key={container.id} className="bg-surface-elevated rounded-card p-5 border border-zinc-800 flex flex-col gap-3">
+                  {/* Header */}
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="p-2.5 rounded-element bg-zinc-800 border border-zinc-700 shrink-0">
+                        <Box className="h-5 w-5 text-orange-400" />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="font-semibold text-foreground truncate" title={container.name}>{container.name}</h3>
+                        <p className="text-xs text-zinc-500 font-mono truncate" title={container.image}>{container.image}</p>
+                      </div>
+                    </div>
+                    <div className={cn(
+                      'flex items-center gap-1.5 px-2.5 py-1 rounded-pill text-xs font-medium shrink-0 ml-2',
+                      container.status === 'running' ? 'bg-green-600/20 text-green-400' : 'bg-zinc-700 text-zinc-400'
+                    )}>
+                      <span className={cn('h-1.5 w-1.5 rounded-full', container.status === 'running' && 'bg-green-500 animate-pulse')} />
+                      {container.status}
+                    </div>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <span className="text-xs text-zinc-500">Ports</span>
+                      <p className="text-xs font-mono text-foreground mt-0.5 truncate" title={container.ports || '—'}>
+                        {container.ports || <span className="text-zinc-600">none</span>}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-zinc-500">Memory</span>
+                      <p className="text-sm font-medium text-foreground">{container.memory ? `${container.memory} MB` : '—'}</p>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-2 border-t border-zinc-800 mt-auto">
+                    {container.status === 'running' ? (
+                      <button
+                        onClick={() => stopContainer(container.id)}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-pill bg-zinc-800 text-foreground border border-zinc-700 hover:bg-zinc-700 text-xs"
+                      >
+                        <Square className="h-3.5 w-3.5" /> Stop
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => startContainer(container.id)}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-pill bg-neon text-primary-foreground hover:bg-neon-hover text-xs"
+                      >
+                        <Play className="h-3.5 w-3.5" /> Start
+                      </button>
+                    )}
+                    <button
+                      onClick={() => restartContainer(container.id)}
+                      title="Restart container"
+                      className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-pill bg-zinc-800 text-foreground border border-zinc-700 hover:bg-zinc-700 text-xs"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" /> Restart
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

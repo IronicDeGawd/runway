@@ -15,6 +15,15 @@ export interface Service {
   memory?: number;
 }
 
+export interface ExternalContainer {
+  id: string;
+  name: string;
+  image: string;
+  status: 'running' | 'stopped';
+  ports: string;
+  memory?: number;
+}
+
 export function useServices() {
   const queryClient = useQueryClient();
   const { subscribe, on, off } = useWebSocket();
@@ -28,87 +37,42 @@ export function useServices() {
     staleTime: 10000,
   });
 
-  // Subscribe to WebSocket updates
   useEffect(() => {
     subscribe(['services']);
-
-    const handleServiceChange = () => {
-      queryClient.invalidateQueries({ queryKey: ['services'] });
-    };
-
+    const handleServiceChange = () => queryClient.invalidateQueries({ queryKey: ['services'] });
     on('service:change', handleServiceChange);
-
-    return () => {
-      off('service:change', handleServiceChange);
-    };
+    return () => off('service:change', handleServiceChange);
   }, [subscribe, on, off, queryClient]);
 
   const startMutation = useMutation({
-    mutationFn: async (type: string) => {
-        await api.post(`/services/${type}/start`);
-    },
-    onSuccess: () => {
-        toast.success(`Service starting...`);
-        queryClient.invalidateQueries({ queryKey: ['services'] });
-    },
-    onError: (err: any) => {
-        toast.error(err.response?.data?.error || `Failed to start service`);
-    }
+    mutationFn: (type: string) => api.post(`/services/${type}/start`),
+    onSuccess: () => { toast.success('Service starting...'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to start service'),
   });
 
   const stopMutation = useMutation({
-    mutationFn: async (type: string) => {
-        await api.post(`/services/${type}/stop`);
-    },
-    onSuccess: () => {
-        toast.success(`Service stopping...`);
-        queryClient.invalidateQueries({ queryKey: ['services'] });
-    },
-    onError: (err: any) => {
-        toast.error(err.response?.data?.error || `Failed to stop service`);
-    }
+    mutationFn: (type: string) => api.post(`/services/${type}/stop`),
+    onSuccess: () => { toast.success('Service stopping...'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to stop service'),
   });
 
   const createMutation = useMutation({
-    mutationFn: async (type: string) => {
-        await api.post(`/services/create`, { type });
-    },
-    onSuccess: () => {
-        toast.success(`Service created successfully`);
-        queryClient.invalidateQueries({ queryKey: ['services'] });
-    },
-    onError: (err: any) => {
-        toast.error(err.response?.data?.error || `Failed to create service`);
-        throw err;
-    }
+    mutationFn: (type: string) => api.post('/services/create', { type }),
+    onSuccess: () => { toast.success('Service created successfully'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
+    onError: (err: any) => { toast.error(err.response?.data?.error || 'Failed to create service'); throw err; },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: async (type: string) => {
-        await api.delete(`/services/${type}`);
-    },
-    onSuccess: () => {
-        toast.success(`Service deleted successfully`);
-        queryClient.invalidateQueries({ queryKey: ['services'] });
-    },
-    onError: (err: any) => {
-        toast.error(err.response?.data?.error || `Failed to delete service`);
-        throw err;
-    }
+    mutationFn: (type: string) => api.delete(`/services/${type}`),
+    onSuccess: () => { toast.success('Service deleted successfully'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
+    onError: (err: any) => { toast.error(err.response?.data?.error || 'Failed to delete service'); throw err; },
   });
 
   const configureMutation = useMutation({
-    mutationFn: async ({ type, config }: { type: string; config: { port?: number; credentials?: { username?: string; password?: string; database?: string } } }) => {
-        await api.put(`/services/${type}/configure`, config);
-    },
-    onSuccess: () => {
-        toast.success(`Service reconfigured successfully`);
-        queryClient.invalidateQueries({ queryKey: ['services'] });
-    },
-    onError: (err: any) => {
-        toast.error(err.response?.data?.error || `Failed to configure service`);
-        throw err;
-    }
+    mutationFn: ({ type, config }: { type: string; config: { port?: number; credentials?: { username?: string; password?: string; database?: string } } }) =>
+      api.put(`/services/${type}/configure`, config),
+    onSuccess: () => { toast.success('Service reconfigured successfully'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
+    onError: (err: any) => { toast.error(err.response?.data?.error || 'Failed to configure service'); throw err; },
   });
 
   return {
@@ -120,6 +84,53 @@ export function useServices() {
     deleteService: (id: string) => deleteMutation.mutateAsync(id),
     configureService: (type: string, config: { port?: number; credentials?: { username?: string; password?: string; database?: string } }) =>
       configureMutation.mutateAsync({ type, config }),
-    isConfiguring: configureMutation.isPending
+    isConfiguring: configureMutation.isPending,
+  };
+}
+
+export function useExternalContainers() {
+  const queryClient = useQueryClient();
+  const { on, off } = useWebSocket();
+
+  const { data: containers, isLoading } = useQuery({
+    queryKey: ['external-containers'],
+    queryFn: async () => {
+      const res = await api.get<{ success: boolean; data: ExternalContainer[] }>('/services/external');
+      return res.data.data;
+    },
+    staleTime: 8000,
+    refetchInterval: 15000,
+  });
+
+  useEffect(() => {
+    const handleChange = () => queryClient.invalidateQueries({ queryKey: ['external-containers'] });
+    on('service:change', handleChange);
+    return () => off('service:change', handleChange);
+  }, [on, off, queryClient]);
+
+  const startMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/services/external/${id}/start`),
+    onSuccess: () => { toast.success('Container started'); queryClient.invalidateQueries({ queryKey: ['external-containers'] }); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to start container'),
+  });
+
+  const stopMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/services/external/${id}/stop`),
+    onSuccess: () => { toast.success('Container stopped'); queryClient.invalidateQueries({ queryKey: ['external-containers'] }); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to stop container'),
+  });
+
+  const restartMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/services/external/${id}/restart`),
+    onSuccess: () => { toast.success('Container restarted'); queryClient.invalidateQueries({ queryKey: ['external-containers'] }); },
+    onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to restart container'),
+  });
+
+  return {
+    containers: containers || [],
+    isLoading,
+    startContainer: (id: string) => startMutation.mutateAsync(id),
+    stopContainer: (id: string) => stopMutation.mutateAsync(id),
+    restartContainer: (id: string) => restartMutation.mutateAsync(id),
   };
 }

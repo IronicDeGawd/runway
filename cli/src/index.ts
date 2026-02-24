@@ -8,6 +8,9 @@ import { statusCommand } from './commands/status';
 import { resetCommand } from './commands/reset';
 import { domainCommand } from './commands/domain';
 import { metricsCommand } from './commands/metrics';
+import { loginCommand } from './commands/login';
+import { updateCommand } from './commands/update';
+import { logsCommand } from './commands/logs';
 
 const program = new Command();
 
@@ -23,6 +26,12 @@ program
   .option('-s, --server <url>', 'Server URL')
   .action(initCommand);
 
+// Login command (re-authenticate without full init)
+program
+  .command('login')
+  .description('Re-authenticate with the Runway server')
+  .action(loginCommand);
+
 // Deploy command
 program
   .command('deploy')
@@ -34,6 +43,12 @@ program
   .option('--build-server', 'Upload source and build on server')
   .option('-e, --env-file <path>', 'Path to environment file')
   .action(deployCommand);
+
+// Update command (update existing deployed project)
+program
+  .command('update')
+  .description('Update an existing deployed project')
+  .action(updateCommand);
 
 // List command
 program
@@ -47,6 +62,14 @@ program
   .command('status <project>')
   .description('Get status of a deployed project')
   .action(statusCommand);
+
+// Logs command
+program
+  .command('logs [project]')
+  .description('View logs for a deployed project')
+  .option('-n, --lines <count>', 'Number of lines to show', '100')
+  .option('--type <type>', 'Log type: out, error, or all', 'all')
+  .action(logsCommand);
 
 // Reset command
 program
@@ -68,3 +91,4 @@ program
 
 // Parse command line arguments
 program.parse();
+

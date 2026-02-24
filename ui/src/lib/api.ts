@@ -72,6 +72,8 @@ export interface DeployAnalysis {
   declaredType: 'react' | 'next' | 'node' | 'static';
   // Package state
   hasPackageJson: boolean;
+  packageManager?: string;
+  alternativePackageManagers?: string[];
   hasBuildScript: boolean;
   hasStartScript: boolean;
   // Build state (generic detection)

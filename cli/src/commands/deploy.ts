@@ -8,7 +8,7 @@ import { detectProject } from '../services/projectDetector';
 import { buildService } from '../services/buildService';
 import { packageService } from '../services/packageService';
 import { createUploadService } from '../services/uploadService';
-import { isConfigured, getConfig } from '../utils/config';
+import { isConfigured, getConfig, isTokenExpired } from '../utils/config';
 import { logger } from '../utils/logger';
 
 interface DeployOptions {
@@ -144,6 +144,13 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     return;
   }
 
+  // Check token validity before proceeding
+  if (isTokenExpired()) {
+    logger.error('Your authentication token has expired.');
+    logger.info('Run "runway login" to re-authenticate.');
+    return;
+  }
+
   const config = getConfig();
   logger.dim(`Server: ${config.serverUrl}`);
   logger.blank();
@@ -161,8 +168,13 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
     return;
   }
 
-  // Determine project name
-  let projectName = options.name || detectedProject.name;
+  // Determine project name — sanitize from package.json
+  const suggestedName = (detectedProject.name || path.basename(process.cwd()))
+    .replace(/^@[^/]+\//, '')        // Remove npm scope (@scope/name → name)
+    .replace(/[^a-zA-Z0-9-_]/g, '-')  // Replace invalid chars with hyphens
+    .replace(/^-+|-+$/g, '')          // Trim leading/trailing hyphens
+    .toLowerCase();
+  let projectName = options.name || suggestedName;
 
   // Interactive mode if name not provided
   if (!options.name) {
@@ -280,6 +292,13 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   if (buildMode === 'local') {
     logger.step(1, 4, 'Building project...');
 
+    // Patch React Router basename before build (if applicable)
+    let didPatch = false;
+    if (projectType === 'react') {
+      const { ReactPatcher } = await import('../services/reactPatcher');
+      didPatch = await ReactPatcher.patch(process.cwd());
+    }
+
     const buildResult = await buildService.build({
       projectPath: process.cwd(),
       projectType,
@@ -287,6 +306,12 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
       packageManager: detectedProject.packageManager,
       envFile: envFilePath,
     });
+
+    // Revert patch after build (keep user's source clean)
+    if (didPatch) {
+      const { ReactPatcher } = await import('../services/reactPatcher');
+      await ReactPatcher.revert(process.cwd());
+    }
 
     if (!buildResult.success) {
       logger.error(`Build failed: ${buildResult.error}`);
@@ -435,6 +460,12 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
           // Fallback to server URL if domain fetch fails
           logger.blank();
           logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
+        }
+
+        // Show health warning if service didn't respond on its allocated port
+        if (finalStatus.healthWarning) {
+          logger.blank();
+          logger.warn(`⚠  Health check: ${finalStatus.healthWarning}`);
         }
       } else {
         logger.error(`Deployment failed: ${finalStatus.error || 'Unknown error'}`);

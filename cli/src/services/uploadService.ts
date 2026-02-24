@@ -29,6 +29,7 @@ export interface DeploymentStatus {
   progress?: number;
   logs?: string;
   error?: string;
+  healthWarning?: string;
 }
 
 export interface DeployWarning {

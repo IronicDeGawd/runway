@@ -223,28 +223,53 @@ export class DeploymentService {
         logger.info('Flattened nested directory structure');
       }
 
-      // 2. Validate package.json exists
-      const pkgJsonPath = path.join(stagingDir, 'package.json');
-      if (!await fs.pathExists(pkgJsonPath)) {
-        throw new AppError('Invalid project: package.json missing', 400);
+      // 2. Validate package.json exists (except for static sites)
+      if (type !== 'static') {
+        const pkgJsonPath = path.join(stagingDir, 'package.json');
+        if (!await fs.pathExists(pkgJsonPath)) {
+          throw new AppError('Invalid project: package.json missing', 400);
+        }
+      }
+
+      // 2.5. Static site: ensure index.html exists
+      if (type === 'static') {
+        const indexPath = path.join(stagingDir, 'index.html');
+        if (!await fs.pathExists(indexPath)) {
+          // Find all HTML files (excluding __MACOSX and hidden dirs)
+          const allFiles = await fs.readdir(stagingDir);
+          const htmlFiles = allFiles.filter((f: string) => f.endsWith('.html') || f.endsWith('.htm'));
+          if (htmlFiles.length === 1) {
+            const srcFile = path.join(stagingDir, htmlFiles[0]);
+            await fs.copy(srcFile, indexPath);
+            logger.info(`Static site: renamed ${htmlFiles[0]} to index.html`);
+          } else if (htmlFiles.length === 0) {
+            throw new AppError('Static project has no HTML files. Include at least one .html file.', 400);
+          } else {
+            throw new AppError(`Static project has multiple HTML files (${htmlFiles.join(', ')}) but no index.html. Please include an index.html as the entry point.`, 400);
+          }
+        }
       }
 
       // 3. Detect package manager
-      const pkgManager = await this.detectPackageManager(stagingDir);
+      const pkgManager = type !== 'static' ? await this.detectPackageManager(stagingDir) : 'npm';
       logger.info(`Detected package manager: ${pkgManager}`);
 
-      // 4. Install dependencies
-      reportProgress('install', 'Installing dependencies...', 25);
-      await this.installDependencies(stagingDir, pkgManager);
-      logger.info('✅ Dependencies installed');
+      // 4. Install dependencies (skip for static sites)
+      if (type !== 'static') {
+        reportProgress('install', 'Installing dependencies...', 25);
+        await this.installDependencies(stagingDir, pkgManager);
+        logger.info('✅ Dependencies installed');
+      }
 
-      // 5. Apply project-specific patches (Router, Configs, etc.)
-      reportProgress('patch', 'Applying patches...', 40);
-      await patcherService.patchProject(stagingDir, type, {
-        projectId: deployId, // Use the deployment ID for logging context
-        projectName,
-        deploymentId: deployId
-      });
+      // 5. Apply project-specific patches (Router, Configs, etc.) — skip for static
+      if (type !== 'static') {
+        reportProgress('patch', 'Applying patches...', 40);
+        await patcherService.patchProject(stagingDir, type, {
+          projectId: deployId, // Use the deployment ID for logging context
+          projectName,
+          deploymentId: deployId
+        });
+      }
 
       // 6. Build the project (if required) - static sites don't need building
       if (type === 'react' || type === 'next') {
@@ -294,12 +319,39 @@ export class DeploymentService {
         logger.info('Stopped existing PM2 process');
       }
 
-      // 9. Atomic directory swap
+      // 9. Atomic directory swap (preserving env and logs)
       const targetDir = path.join(APPS_DIR, projectId);
+      let envBackupPath: string | null = null;
+      let logsBackupPath: string | null = null;
       if (await fs.pathExists(targetDir)) {
+        // Backup .env.enc before removing old directory
+        const envEncPath = path.join(targetDir, '.env.enc');
+        if (await fs.pathExists(envEncPath)) {
+          envBackupPath = path.join(APPS_DIR, `${projectId}__env_backup.enc`);
+          await fs.copy(envEncPath, envBackupPath);
+          logger.info('Backed up encrypted environment variables');
+        }
+        // Backup logs directory
+        const logsDir = path.join(targetDir, 'logs');
+        if (await fs.pathExists(logsDir)) {
+          logsBackupPath = path.join(APPS_DIR, `${projectId}__logs_backup`);
+          await fs.copy(logsDir, logsBackupPath);
+          logger.info('Backed up logs directory');
+        }
         await fs.remove(targetDir); 
       }
       await fs.move(stagingDir, targetDir);
+      // Restore backups
+      if (envBackupPath && await fs.pathExists(envBackupPath)) {
+        await fs.copy(envBackupPath, path.join(targetDir, '.env.enc'));
+        await fs.remove(envBackupPath);
+        logger.info('Restored encrypted environment variables');
+      }
+      if (logsBackupPath && await fs.pathExists(logsBackupPath)) {
+        await fs.copy(logsBackupPath, path.join(targetDir, 'logs'));
+        await fs.remove(logsBackupPath);
+        logger.info('Restored logs directory');
+      }
       logger.info(`Deployed to ${targetDir}`);
 
       // 10. Register / Update Project
@@ -345,17 +397,32 @@ export class DeploymentService {
 
       // 11. Start PM2 process (if not static site)
       if (type !== 'react' && type !== 'static') {
+        // Inject PORT so apps using process.env.PORT bind to the correct allocated port
+        await envManager.setEnv(projectId, { PORT: String(port) }, true);
+        logger.info(`Injected PORT=${port} env var`);
+
         await pm2Service.startProject(newConfig);
         logger.info('PM2 process started');
 
-        // Quick health check
-        await this.waitForProcessStart(newConfig);
+        // HTTP health check — warn if service does not respond on the allocated port
+        const health = await this.waitForProcessStart(newConfig);
+        if (!health.healthy) {
+          this.setHealthWarning(deployId, health.warning);
+        }
       }
 
       // 12. ✅ CRITICAL FIX: Update Caddy with modular config
       reportProgress('deploy', 'Configuring reverse proxy...', 90);
       await caddyConfigManager.updateProjectConfig(newConfig);
       logger.info('✅ Caddy config updated');
+
+      // 12.5. Health check for react/static: probe Caddy path
+      if (type === 'react' || type === 'static') {
+        const health = await this.waitForCaddyPath(newConfig);
+        if (!health.healthy) {
+          this.setHealthWarning(deployId, health.warning);
+        }
+      }
 
       // 13. Apply Environment Variables (Runtime Config)
       // This ensures React apps get env-config.js and PM2 apps get envs
@@ -431,7 +498,8 @@ export class DeploymentService {
     progress: number, 
     logs: string[], 
     error?: string,
-    project?: ProjectConfig 
+    project?: ProjectConfig,
+    healthWarning?: string
   }>();
 
   updateDeploymentStatus(id: string, update: Partial<{ status: 'deploying' | 'success' | 'failed', progress: number, logs: string[], error?: string, project: ProjectConfig }>) {
@@ -511,14 +579,34 @@ export class DeploymentService {
         logger.info('Flattened nested directory structure');
       }
 
-      // 2. Validate package.json exists
-      const pkgJsonPath = path.join(stagingDir, 'package.json');
-      if (!await fs.pathExists(pkgJsonPath)) {
-        throw new AppError('Invalid project: package.json missing', 400);
+      // 2. Validate package.json exists (except for static sites)
+      if (type !== 'static') {
+        const pkgJsonPath = path.join(stagingDir, 'package.json');
+        if (!await fs.pathExists(pkgJsonPath)) {
+          throw new AppError('Invalid project: package.json missing', 400);
+        }
+      }
+
+      // 2.5. Static site: ensure index.html exists
+      if (type === 'static') {
+        const indexPath = path.join(stagingDir, 'index.html');
+        if (!await fs.pathExists(indexPath)) {
+          const allFiles = await fs.readdir(stagingDir);
+          const htmlFiles = allFiles.filter((f: string) => f.endsWith('.html') || f.endsWith('.htm'));
+          if (htmlFiles.length === 1) {
+            const srcFile = path.join(stagingDir, htmlFiles[0]);
+            await fs.copy(srcFile, indexPath);
+            logger.info(`Static site: renamed ${htmlFiles[0]} to index.html`);
+          } else if (htmlFiles.length === 0) {
+            throw new AppError('Static project has no HTML files. Include at least one .html file.', 400);
+          } else {
+            throw new AppError(`Static project has multiple HTML files (${htmlFiles.join(', ')}) but no index.html. Please include an index.html as the entry point.`, 400);
+          }
+        }
       }
 
       // 3. Detect package manager
-      const pkgManager = await this.detectPackageManager(stagingDir);
+      const pkgManager = type !== 'static' ? await this.detectPackageManager(stagingDir) : 'npm';
       logger.info(`Detected package manager: ${pkgManager}`);
 
       // 4. For Next.js and Node.js, install production dependencies only
@@ -595,12 +683,39 @@ export class DeploymentService {
         logger.info('Stopped existing PM2 process');
       }
 
-      // 8. Atomic directory swap
+      // 8. Atomic directory swap (preserving env and logs)
       const targetDir = path.join(APPS_DIR, projectId);
+      let envBackupPath: string | null = null;
+      let logsBackupPath: string | null = null;
       if (await fs.pathExists(targetDir)) {
+        // Backup .env.enc before removing old directory
+        const envEncPath = path.join(targetDir, '.env.enc');
+        if (await fs.pathExists(envEncPath)) {
+          envBackupPath = path.join(APPS_DIR, `${projectId}__env_backup.enc`);
+          await fs.copy(envEncPath, envBackupPath);
+          logger.info('Backed up encrypted environment variables');
+        }
+        // Backup logs directory
+        const logsDir = path.join(targetDir, 'logs');
+        if (await fs.pathExists(logsDir)) {
+          logsBackupPath = path.join(APPS_DIR, `${projectId}__logs_backup`);
+          await fs.copy(logsDir, logsBackupPath);
+          logger.info('Backed up logs directory');
+        }
         await fs.remove(targetDir);
       }
       await fs.move(stagingDir, targetDir);
+      // Restore backups
+      if (envBackupPath && await fs.pathExists(envBackupPath)) {
+        await fs.copy(envBackupPath, path.join(targetDir, '.env.enc'));
+        await fs.remove(envBackupPath);
+        logger.info('Restored encrypted environment variables');
+      }
+      if (logsBackupPath && await fs.pathExists(logsBackupPath)) {
+        await fs.copy(logsBackupPath, path.join(targetDir, 'logs'));
+        await fs.remove(logsBackupPath);
+        logger.info('Restored logs directory');
+      }
       logger.info(`Deployed to ${targetDir}`);
 
       // 8.5. Extract .env from Node.js projects and store in database
@@ -646,14 +761,31 @@ export class DeploymentService {
 
       // 10. Start PM2 process (if not static site)
       if (type !== 'react' && type !== 'static') {
+        // Inject PORT so apps using process.env.PORT bind to the correct allocated port
+        await envManager.setEnv(projectId, { PORT: String(port) }, true);
+        logger.info(`Injected PORT=${port} env var`);
+
         await pm2Service.startProject(newConfig);
         logger.info('PM2 process started');
-        await this.waitForProcessStart(newConfig);
+
+        // HTTP health check — warn if service does not respond on the allocated port
+        const health = await this.waitForProcessStart(newConfig);
+        if (!health.healthy) {
+          this.setHealthWarning(deployId, health.warning);
+        }
       }
 
       // 11. Update Caddy config
       await caddyConfigManager.updateProjectConfig(newConfig);
       logger.info('✅ Caddy config updated');
+
+      // 11.5. Health check for react/static: probe Caddy path
+      if (type === 'react' || type === 'static') {
+        const health = await this.waitForCaddyPath(newConfig);
+        if (!health.healthy) {
+          this.setHealthWarning(deployId, health.warning);
+        }
+      }
 
       // 12. Apply Runtime Config (for React env-config.js)
       await envManager.applyEnv(projectId);
@@ -704,32 +836,119 @@ export class DeploymentService {
   }
 
   /**
-   * Wait for PM2 process to start and respond
+   * After Caddy config is updated, probe the app's path on localhost:80.
+   * Used for react/static projects served directly by Caddy (no PM2).
    */
-  private async waitForProcessStart(project: ProjectConfig): Promise<void> {
-    const maxWait = 30000; // 30 seconds
+  private async waitForCaddyPath(project: ProjectConfig): Promise<{ healthy: boolean; warning?: string }> {
+    const safeName = project.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const appPath = `/app/${safeName}`;
+    const httpTimeout = 15000;
+    const httpStart = Date.now();
+
+    logger.info(`Probing Caddy path http://localhost:80${appPath} for ${project.name}...`);
+
+    while (Date.now() - httpStart < httpTimeout) {
+      try {
+        const responded = await new Promise<boolean>((resolve) => {
+          const http = require('http');
+          const req = http.get(
+            { hostname: 'localhost', port: 80, path: appPath, timeout: 2000 },
+            (res: any) => resolve(res.statusCode >= 200 && res.statusCode < 400) // only 2xx/3xx = actually serving content
+          );
+          req.on('error', () => resolve(false));
+          req.on('timeout', () => { req.destroy(); resolve(false); });
+        });
+
+        if (responded) {
+          logger.info(`✅ ${project.name} is reachable via Caddy at ${appPath}`);
+          return { healthy: true };
+        }
+      } catch {
+        // ignore, retry
+      }
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    const warning = `Static/React app did not become reachable at ${appPath} within 15s. Caddy may still be reloading — try the URL in a few seconds.`;
+    logger.warn(warning);
+    return { healthy: false, warning };
+  }
+
+  private setHealthWarning(deployId: string, warning?: string): void {
+    if (!deployId) return;
+    const current = this.activeDeployments.get(deployId);
+    if (current) {
+      this.activeDeployments.set(deployId, { ...current, healthWarning: warning });
+    }
+  }
+
+  /**
+   * Wait for PM2 process to start (phase 1) then probe HTTP endpoint (phase 2).
+   * Returns { healthy: boolean; warning?: string }.
+   * Never throws — a health-check failure is surfaced as a warning, not an error.
+   */
+  private async waitForProcessStart(project: ProjectConfig): Promise<{ healthy: boolean; warning?: string }> {
+    const pm2Timeout = 15000;  // 15s to go online in PM2
+    const httpTimeout = 15000; // 15s for HTTP to respond
     const startTime = Date.now();
-    
+
     logger.info(`Waiting for ${project.name} to start...`);
 
-    while (Date.now() - startTime < maxWait) {
+    // Phase 1: wait for PM2 status === 'online'
+    while (Date.now() - startTime < pm2Timeout) {
       try {
         const list = await pm2Service.getProcesses();
         const proc = list.find((p: any) => p.name === project.id);
-        
+
         if (proc && proc.status === 'online') {
-          logger.info(`✅ ${project.name} is running`);
-          return;
+          logger.info(`✅ ${project.name} PM2 process is online`);
+          break;
         }
-        
+
+        if (proc && (proc.status === 'errored' || proc.status === 'stopped')) {
+          logger.warn(`${project.name} process ${proc.status} immediately after start`);
+          return {
+            healthy: false,
+            warning: `Process exited with status "${proc.status}" immediately after start. The app may have a hardcoded port or missing entry point. Run \`runway logs ${project.name}\` to investigate.`,
+          };
+        }
+
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error) {
-        logger.warn('Error checking process status', error);
+        logger.warn('Error checking PM2 process status', error);
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
 
-    logger.warn(`${project.name} started but may not be fully ready`);
+    // Phase 2: probe HTTP on the allocated port
+    const httpStart = Date.now();
+    logger.info(`Probing http://localhost:${project.port} for ${project.name}...`);
+
+    while (Date.now() - httpStart < httpTimeout) {
+      try {
+        const responded = await new Promise<boolean>((resolve) => {
+          const http = require('http');
+          const req = http.get(
+            { hostname: 'localhost', port: project.port, path: '/', timeout: 2000 },
+            () => resolve(true)
+          );
+          req.on('error', () => resolve(false));
+          req.on('timeout', () => { req.destroy(); resolve(false); });
+        });
+
+        if (responded) {
+          logger.info(`✅ ${project.name} is responding on port ${project.port}`);
+          return { healthy: true };
+        }
+      } catch {
+        // ignore, retry
+      }
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    const warning = `Service did not respond on port ${project.port} after 30s. If your app uses a hardcoded port instead of process.env.PORT, it won't be reachable. Run \`runway logs ${project.name}\` to investigate.`;
+    logger.warn(warning);
+    return { healthy: false, warning };
   }
 
   /**
@@ -754,6 +973,14 @@ export class DeploymentService {
     logger.info(`Rebuilding project ${project.name} (${projectId})`);
 
     try {
+      // 0. Re-install dependencies if node_modules is missing (cleaned up after initial deploy)
+      const nodeModulesPath = path.join(projectDir, 'node_modules');
+      if (!await fs.pathExists(nodeModulesPath)) {
+        logger.info('node_modules missing, re-installing dependencies before rebuild...');
+        await this.installDependencies(projectDir, project.pkgManager);
+        logger.info('✅ Dependencies re-installed for rebuild');
+      }
+
       // 1. Build the project
       await this.buildProject(
         projectDir,
