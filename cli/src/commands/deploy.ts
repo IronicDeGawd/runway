@@ -461,6 +461,12 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
           logger.blank();
           logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
         }
+
+        // Show health warning if service didn't respond on its allocated port
+        if (finalStatus.healthWarning) {
+          logger.blank();
+          logger.warn(`⚠  Health check: ${finalStatus.healthWarning}`);
+        }
       } else {
         logger.error(`Deployment failed: ${finalStatus.error || 'Unknown error'}`);
         if (finalStatus.logs) {

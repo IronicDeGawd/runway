@@ -1,6 +1,7 @@
 import inquirer from 'inquirer';
 import ora from 'ora';
 import path from 'path';
+import axios from 'axios';
 import { ProjectType } from '../types';
 import { detectProject } from '../services/projectDetector';
 import { buildService } from '../services/buildService';
@@ -194,7 +195,27 @@ export async function updateCommand(): Promise<void> {
         logger.success(`✅ "${projectName}" updated successfully!`);
 
         const safeName = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-        logger.info(`URL: ${config.serverUrl}/app/${safeName}`);
+
+        // Fetch domain config to show proper URL (same pattern as deploy.ts)
+        try {
+          const domainResponse = await axios.get(`${config.serverUrl}/api/domain`, {
+            headers: config.token ? { Authorization: `Bearer ${config.token}` } : {},
+          });
+          const domainConfig = domainResponse.data;
+          if (domainConfig.domain?.active && domainConfig.securityMode === 'domain-https') {
+            logger.info(`Your app is available at: https://${domainConfig.domain.domain}/app/${safeName}`);
+          } else {
+            logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
+          }
+        } catch {
+          logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
+        }
+
+        // Show health warning if service didn't respond on its allocated port
+        if (finalStatus.healthWarning) {
+          logger.blank();
+          logger.warn(`⚠  Health check: ${finalStatus.healthWarning}`);
+        }
       } else {
         logger.error(`Update failed: ${finalStatus.error || 'Unknown error'}`);
         if (finalStatus.logs) {
