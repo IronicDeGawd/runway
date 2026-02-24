@@ -46,7 +46,7 @@ router.post('/create', requireAuth, validateRequest(CreateServiceSchema), async 
   try {
     const { type, name, port, credentials } = req.body;
     const result = await dockerService.createService(type, name, { port, credentials });
-    res.json({ success: true, message: `${type} service "${name}" created on port ${result.port}`, port: result.port });
+    res.json({ success: true, message: `${type} service "${name}" created on port ${result.port}`, port: result.port, warnings: result.warnings });
   } catch (error) {
     next(error);
   }

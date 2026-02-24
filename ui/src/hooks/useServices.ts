@@ -58,7 +58,14 @@ export function useServices() {
 
   const createMutation = useMutation({
     mutationFn: ({ type, name }: { type: string; name: string }) => api.post('/services/create', { type, name }),
-    onSuccess: () => { toast.success('Service created successfully'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
+    onSuccess: (res: any) => {
+      toast.success('Service created successfully');
+      const warnings = res.data?.warnings as string[] | undefined;
+      if (warnings?.length) {
+        warnings.forEach((w: string) => toast.warning(w, { duration: 10000 }));
+      }
+      queryClient.invalidateQueries({ queryKey: ['services'] });
+    },
     onError: (err: any) => { toast.error(err.response?.data?.error || 'Failed to create service'); throw err; },
   });
 

@@ -197,7 +197,7 @@ export class DockerService {
     type: ServiceType,
     name: string,
     config?: { port?: number; credentials?: { username?: string; password?: string; database?: string } }
-  ): Promise<{ port: number }> {
+  ): Promise<{ port: number; warnings: string[] }> {
     await this.ensureDockerChecked();
     if (!this.isDockerAvailable) throw new AppError('Docker not installed', 503);
 
@@ -253,9 +253,33 @@ export class DockerService {
     registry.push(svcConfig);
     saveRegistry(registry);
 
+    // Auto-allow port through OS firewall (ufw)
+    const warnings: string[] = [];
+    try {
+      await execAsync(`which ufw && sudo ufw allow ${port}/tcp comment "runway-svc-${safeName}"`);
+      logger.info(`Firewall: allowed port ${port}/tcp via ufw`);
+    } catch {
+      logger.debug(`ufw not available or failed — port ${port} may need manual firewall config`);
+    }
+
+    // Detect cloud environment and warn about security groups
+    try {
+      // Check for EC2 (AWS)
+      await execAsync('curl -s --connect-timeout 1 http://169.254.169.254/latest/meta-data/instance-id');
+      warnings.push(`Port ${port} opened in OS firewall. You must also allow port ${port}/tcp in your AWS Security Group for external access.`);
+    } catch {
+      try {
+        // Check for GCP
+        await execAsync('curl -s --connect-timeout 1 -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/id');
+        warnings.push(`Port ${port} opened in OS firewall. You must also allow port ${port}/tcp in your GCP Firewall Rules for external access.`);
+      } catch {
+        // Not on a detected cloud — no security group warning needed
+      }
+    }
+
     eventBus.emitEvent('service:change', { type, status: 'running' });
 
-    return { port };
+    return { port, warnings };
   }
 
   async getServices(): Promise<ServiceStatus[]> {
