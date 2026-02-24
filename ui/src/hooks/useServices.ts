@@ -31,7 +31,7 @@ export function useServices() {
   const { data: services, isLoading } = useQuery({
     queryKey: ['services'],
     queryFn: async () => {
-      const res = await api.get<{success: boolean, data: Service[]}>('/services');
+      const res = await api.get<{ success: boolean; data: Service[] }>('/services');
       return res.data.data;
     },
     staleTime: 10000,
@@ -45,32 +45,32 @@ export function useServices() {
   }, [subscribe, on, off, queryClient]);
 
   const startMutation = useMutation({
-    mutationFn: (type: string) => api.post(`/services/${type}/start`),
+    mutationFn: (name: string) => api.post(`/services/${name}/start`),
     onSuccess: () => { toast.success('Service starting...'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to start service'),
   });
 
   const stopMutation = useMutation({
-    mutationFn: (type: string) => api.post(`/services/${type}/stop`),
+    mutationFn: (name: string) => api.post(`/services/${name}/stop`),
     onSuccess: () => { toast.success('Service stopping...'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
     onError: (err: any) => toast.error(err.response?.data?.error || 'Failed to stop service'),
   });
 
   const createMutation = useMutation({
-    mutationFn: (type: string) => api.post('/services/create', { type }),
+    mutationFn: ({ type, name }: { type: string; name: string }) => api.post('/services/create', { type, name }),
     onSuccess: () => { toast.success('Service created successfully'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
     onError: (err: any) => { toast.error(err.response?.data?.error || 'Failed to create service'); throw err; },
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (type: string) => api.delete(`/services/${type}`),
+    mutationFn: (name: string) => api.delete(`/services/${name}`),
     onSuccess: () => { toast.success('Service deleted successfully'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
     onError: (err: any) => { toast.error(err.response?.data?.error || 'Failed to delete service'); throw err; },
   });
 
   const configureMutation = useMutation({
-    mutationFn: ({ type, config }: { type: string; config: { port?: number; credentials?: { username?: string; password?: string; database?: string } } }) =>
-      api.put(`/services/${type}/configure`, config),
+    mutationFn: ({ name, config }: { name: string; config: { port?: number; credentials?: { username?: string; password?: string; database?: string } } }) =>
+      api.put(`/services/${name}/configure`, config),
     onSuccess: () => { toast.success('Service reconfigured successfully'); queryClient.invalidateQueries({ queryKey: ['services'] }); },
     onError: (err: any) => { toast.error(err.response?.data?.error || 'Failed to configure service'); throw err; },
   });
@@ -78,12 +78,12 @@ export function useServices() {
   return {
     services: services || [],
     isLoading,
-    startService: (id: string) => startMutation.mutateAsync(id),
-    stopService: (id: string) => stopMutation.mutateAsync(id),
-    createService: (type: string) => createMutation.mutateAsync(type),
-    deleteService: (id: string) => deleteMutation.mutateAsync(id),
-    configureService: (type: string, config: { port?: number; credentials?: { username?: string; password?: string; database?: string } }) =>
-      configureMutation.mutateAsync({ type, config }),
+    startService: (name: string) => startMutation.mutateAsync(name),
+    stopService: (name: string) => stopMutation.mutateAsync(name),
+    createService: (type: string, name: string) => createMutation.mutateAsync({ type, name }),
+    deleteService: (name: string) => deleteMutation.mutateAsync(name),
+    configureService: (name: string, config: { port?: number; credentials?: { username?: string; password?: string; database?: string } }) =>
+      configureMutation.mutateAsync({ name, config }),
     isConfiguring: configureMutation.isPending,
   };
 }

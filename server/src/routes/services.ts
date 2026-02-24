@@ -10,6 +10,7 @@ const router = Router();
 const CreateServiceSchema = z.object({
   body: z.object({
     type: z.enum(['postgres', 'redis']),
+    name: z.string().min(1).max(30).regex(/^[a-zA-Z0-9-_ ]+$/, 'Name may only contain letters, numbers, hyphens, underscores, and spaces'),
     port: z.number().int().min(1024).max(65535).optional(),
     credentials: z.object({
       username: z.string().optional(),
@@ -30,6 +31,8 @@ const ConfigureServiceSchema = z.object({
   }),
 });
 
+// ── Managed services ────────────────────────────────────────────────────────
+
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const services = await dockerService.getServices();
@@ -41,62 +44,84 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/create', requireAuth, validateRequest(CreateServiceSchema), async (req, res, next) => {
   try {
-    const { type, port, credentials } = req.body;
-    await dockerService.createService(type, { port, credentials });
-    res.json({ success: true, message: `${type} service created and started` });
+    const { type, name, port, credentials } = req.body;
+    const result = await dockerService.createService(type, name, { port, credentials });
+    res.json({ success: true, message: `${type} service "${name}" created on port ${result.port}`, port: result.port });
   } catch (error) {
     next(error);
   }
 });
 
-router.post('/:type/start', requireAuth, async (req, res, next) => {
+router.post('/:name/start', requireAuth, async (req, res, next) => {
   try {
-    const { type } = req.params;
-    if (type !== 'postgres' && type !== 'redis') {
-        throw new AppError('Invalid service type', 400);
-    }
-    await dockerService.startService(type);
-    res.json({ success: true, message: `${type} started` });
+    await dockerService.startService(req.params.name);
+    res.json({ success: true, message: `${req.params.name} started` });
   } catch (error) {
     next(error);
   }
 });
 
-router.post('/:type/stop', requireAuth, async (req, res, next) => {
-    try {
-      const { type } = req.params;
-      if (type !== 'postgres' && type !== 'redis') {
-          throw new AppError('Invalid service type', 400);
-      }
-      await dockerService.stopService(type);
-      res.json({ success: true, message: `${type} stopped` });
-    } catch (error) {
-      next(error);
-    }
-  });
-
-router.delete('/:type', requireAuth, async (req, res, next) => {
+router.post('/:name/stop', requireAuth, async (req, res, next) => {
   try {
-    const { type } = req.params;
-    if (type !== 'postgres' && type !== 'redis') {
-        throw new AppError('Invalid service type', 400);
-    }
-    await dockerService.deleteService(type);
-    res.json({ success: true, message: `${type} service removed` });
+    await dockerService.stopService(req.params.name);
+    res.json({ success: true, message: `${req.params.name} stopped` });
   } catch (error) {
     next(error);
   }
 });
 
-router.put('/:type/configure', requireAuth, validateRequest(ConfigureServiceSchema), async (req, res, next) => {
+router.delete('/:name', requireAuth, async (req, res, next) => {
   try {
-    const { type } = req.params;
-    if (type !== 'postgres' && type !== 'redis') {
-      throw new AppError('Invalid service type', 400);
-    }
+    await dockerService.deleteService(req.params.name);
+    res.json({ success: true, message: `${req.params.name} deleted` });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.put('/:name/configure', requireAuth, validateRequest(ConfigureServiceSchema), async (req, res, next) => {
+  try {
     const { port, credentials } = req.body;
-    await dockerService.configureService(type, { port, credentials });
-    res.json({ success: true, message: `${type} configuration updated and service restarted` });
+    await dockerService.configureService(req.params.name, { port, credentials });
+    res.json({ success: true, message: `${req.params.name} reconfigured and restarted` });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// ── External (non-Runway) Docker containers ─────────────────────────────────
+
+router.get('/external', requireAuth, async (req, res, next) => {
+  try {
+    const containers = await dockerService.getExternalContainers();
+    res.json({ success: true, data: containers });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/external/:id/start', requireAuth, async (req, res, next) => {
+  try {
+    await dockerService.startContainer(req.params.id);
+    res.json({ success: true, message: 'Container started' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/external/:id/stop', requireAuth, async (req, res, next) => {
+  try {
+    await dockerService.stopContainer(req.params.id);
+    res.json({ success: true, message: 'Container stopped' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/external/:id/restart', requireAuth, async (req, res, next) => {
+  try {
+    await dockerService.restartContainer(req.params.id);
+    res.json({ success: true, message: 'Container restarted' });
   } catch (error) {
     next(error);
   }
