@@ -38,12 +38,9 @@ export interface ActivityNewPayload {
   timestamp: string;
 }
 
-export interface ServiceChangePayload {
-  type: 'postgres' | 'redis';
-  status: 'running' | 'stopped' | 'error';
-  version?: string;
-  connectionString?: string;
-}
+export type ServiceChangePayload =
+  | { type: 'postgres' | 'redis'; status: 'running' | 'stopped' | 'error'; version?: string; connectionString?: string }
+  | { containerId: string; action: 'start' | 'stop' | 'restart' };
 
 export interface ProjectChangePayload {
   action: 'created' | 'deleted' | 'updated';

@@ -397,17 +397,32 @@ export class DeploymentService {
 
       // 11. Start PM2 process (if not static site)
       if (type !== 'react' && type !== 'static') {
+        // Inject PORT so apps using process.env.PORT bind to the correct allocated port
+        await envManager.setEnv(projectId, { PORT: String(port) }, true);
+        logger.info(`Injected PORT=${port} env var`);
+
         await pm2Service.startProject(newConfig);
         logger.info('PM2 process started');
 
-        // Quick health check
-        await this.waitForProcessStart(newConfig);
+        // HTTP health check — warn if service does not respond on the allocated port
+        const health = await this.waitForProcessStart(newConfig);
+        if (!health.healthy) {
+          this.setHealthWarning(deployId, health.warning);
+        }
       }
 
       // 12. ✅ CRITICAL FIX: Update Caddy with modular config
       reportProgress('deploy', 'Configuring reverse proxy...', 90);
       await caddyConfigManager.updateProjectConfig(newConfig);
       logger.info('✅ Caddy config updated');
+
+      // 12.5. Health check for react/static: probe Caddy path
+      if (type === 'react' || type === 'static') {
+        const health = await this.waitForCaddyPath(newConfig);
+        if (!health.healthy) {
+          this.setHealthWarning(deployId, health.warning);
+        }
+      }
 
       // 13. Apply Environment Variables (Runtime Config)
       // This ensures React apps get env-config.js and PM2 apps get envs
@@ -483,7 +498,8 @@ export class DeploymentService {
     progress: number, 
     logs: string[], 
     error?: string,
-    project?: ProjectConfig 
+    project?: ProjectConfig,
+    healthWarning?: string
   }>();
 
   updateDeploymentStatus(id: string, update: Partial<{ status: 'deploying' | 'success' | 'failed', progress: number, logs: string[], error?: string, project: ProjectConfig }>) {
@@ -745,14 +761,31 @@ export class DeploymentService {
 
       // 10. Start PM2 process (if not static site)
       if (type !== 'react' && type !== 'static') {
+        // Inject PORT so apps using process.env.PORT bind to the correct allocated port
+        await envManager.setEnv(projectId, { PORT: String(port) }, true);
+        logger.info(`Injected PORT=${port} env var`);
+
         await pm2Service.startProject(newConfig);
         logger.info('PM2 process started');
-        await this.waitForProcessStart(newConfig);
+
+        // HTTP health check — warn if service does not respond on the allocated port
+        const health = await this.waitForProcessStart(newConfig);
+        if (!health.healthy) {
+          this.setHealthWarning(deployId, health.warning);
+        }
       }
 
       // 11. Update Caddy config
       await caddyConfigManager.updateProjectConfig(newConfig);
       logger.info('✅ Caddy config updated');
+
+      // 11.5. Health check for react/static: probe Caddy path
+      if (type === 'react' || type === 'static') {
+        const health = await this.waitForCaddyPath(newConfig);
+        if (!health.healthy) {
+          this.setHealthWarning(deployId, health.warning);
+        }
+      }
 
       // 12. Apply Runtime Config (for React env-config.js)
       await envManager.applyEnv(projectId);
@@ -803,32 +836,119 @@ export class DeploymentService {
   }
 
   /**
-   * Wait for PM2 process to start and respond
+   * After Caddy config is updated, probe the app's path on localhost:80.
+   * Used for react/static projects served directly by Caddy (no PM2).
    */
-  private async waitForProcessStart(project: ProjectConfig): Promise<void> {
-    const maxWait = 30000; // 30 seconds
+  private async waitForCaddyPath(project: ProjectConfig): Promise<{ healthy: boolean; warning?: string }> {
+    const safeName = project.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const appPath = `/app/${safeName}`;
+    const httpTimeout = 15000;
+    const httpStart = Date.now();
+
+    logger.info(`Probing Caddy path http://localhost:80${appPath} for ${project.name}...`);
+
+    while (Date.now() - httpStart < httpTimeout) {
+      try {
+        const responded = await new Promise<boolean>((resolve) => {
+          const http = require('http');
+          const req = http.get(
+            { hostname: 'localhost', port: 80, path: appPath, timeout: 2000 },
+            (res: any) => resolve(res.statusCode >= 200 && res.statusCode < 400) // only 2xx/3xx = actually serving content
+          );
+          req.on('error', () => resolve(false));
+          req.on('timeout', () => { req.destroy(); resolve(false); });
+        });
+
+        if (responded) {
+          logger.info(`✅ ${project.name} is reachable via Caddy at ${appPath}`);
+          return { healthy: true };
+        }
+      } catch {
+        // ignore, retry
+      }
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    const warning = `Static/React app did not become reachable at ${appPath} within 15s. Caddy may still be reloading — try the URL in a few seconds.`;
+    logger.warn(warning);
+    return { healthy: false, warning };
+  }
+
+  private setHealthWarning(deployId: string, warning?: string): void {
+    if (!deployId) return;
+    const current = this.activeDeployments.get(deployId);
+    if (current) {
+      this.activeDeployments.set(deployId, { ...current, healthWarning: warning });
+    }
+  }
+
+  /**
+   * Wait for PM2 process to start (phase 1) then probe HTTP endpoint (phase 2).
+   * Returns { healthy: boolean; warning?: string }.
+   * Never throws — a health-check failure is surfaced as a warning, not an error.
+   */
+  private async waitForProcessStart(project: ProjectConfig): Promise<{ healthy: boolean; warning?: string }> {
+    const pm2Timeout = 15000;  // 15s to go online in PM2
+    const httpTimeout = 15000; // 15s for HTTP to respond
     const startTime = Date.now();
-    
+
     logger.info(`Waiting for ${project.name} to start...`);
 
-    while (Date.now() - startTime < maxWait) {
+    // Phase 1: wait for PM2 status === 'online'
+    while (Date.now() - startTime < pm2Timeout) {
       try {
         const list = await pm2Service.getProcesses();
         const proc = list.find((p: any) => p.name === project.id);
-        
+
         if (proc && proc.status === 'online') {
-          logger.info(`✅ ${project.name} is running`);
-          return;
+          logger.info(`✅ ${project.name} PM2 process is online`);
+          break;
         }
-        
+
+        if (proc && (proc.status === 'errored' || proc.status === 'stopped')) {
+          logger.warn(`${project.name} process ${proc.status} immediately after start`);
+          return {
+            healthy: false,
+            warning: `Process exited with status "${proc.status}" immediately after start. The app may have a hardcoded port or missing entry point. Run \`runway logs ${project.name}\` to investigate.`,
+          };
+        }
+
         await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (error) {
-        logger.warn('Error checking process status', error);
+        logger.warn('Error checking PM2 process status', error);
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
 
-    logger.warn(`${project.name} started but may not be fully ready`);
+    // Phase 2: probe HTTP on the allocated port
+    const httpStart = Date.now();
+    logger.info(`Probing http://localhost:${project.port} for ${project.name}...`);
+
+    while (Date.now() - httpStart < httpTimeout) {
+      try {
+        const responded = await new Promise<boolean>((resolve) => {
+          const http = require('http');
+          const req = http.get(
+            { hostname: 'localhost', port: project.port, path: '/', timeout: 2000 },
+            () => resolve(true)
+          );
+          req.on('error', () => resolve(false));
+          req.on('timeout', () => { req.destroy(); resolve(false); });
+        });
+
+        if (responded) {
+          logger.info(`✅ ${project.name} is responding on port ${project.port}`);
+          return { healthy: true };
+        }
+      } catch {
+        // ignore, retry
+      }
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    const warning = `Service did not respond on port ${project.port} after 30s. If your app uses a hardcoded port instead of process.env.PORT, it won't be reachable. Run \`runway logs ${project.name}\` to investigate.`;
+    logger.warn(warning);
+    return { healthy: false, warning };
   }
 
   /**
