@@ -102,4 +102,42 @@ router.put('/:type/configure', requireAuth, validateRequest(ConfigureServiceSche
   }
 });
 
+// ── External (non-Runway) Docker containers ──────────────────────────────────
+
+router.get('/external', requireAuth, async (req, res, next) => {
+  try {
+    const containers = await dockerService.getExternalContainers();
+    res.json({ success: true, data: containers });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/external/:id/start', requireAuth, async (req, res, next) => {
+  try {
+    await dockerService.startContainer(req.params.id);
+    res.json({ success: true, message: 'Container started' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/external/:id/stop', requireAuth, async (req, res, next) => {
+  try {
+    await dockerService.stopContainer(req.params.id);
+    res.json({ success: true, message: 'Container stopped' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.post('/external/:id/restart', requireAuth, async (req, res, next) => {
+  try {
+    await dockerService.restartContainer(req.params.id);
+    res.json({ success: true, message: 'Container restarted' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 export const servicesRouter = router;

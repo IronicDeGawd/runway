@@ -23,6 +23,15 @@ export interface ServiceStatus {
   connectionString?: string;
 }
 
+export interface ExternalContainer {
+  id: string;       // short container ID
+  name: string;     // container name
+  image: string;    // e.g. "python:3.12"
+  status: 'running' | 'stopped';
+  ports: string;    // e.g. "0.0.0.0:8080->8080/tcp"
+  memory?: number;  // MB (only when running)
+}
+
 export class DockerService {
   private isDockerAvailable: boolean | null = null;
   private dockerCheckPromise: Promise<void>;
@@ -443,6 +452,92 @@ volumes:
     }
 
     await fs.writeFile(COMPOSE_FILE, composeContent);
+  }
+  /**
+   * List all Docker containers NOT managed by Runway (i.e. not prefixed with "runway-").
+   */
+  async getExternalContainers(): Promise<ExternalContainer[]> {
+    await this.ensureDockerChecked();
+    if (!this.isDockerAvailable) return [];
+
+    try {
+      const { stdout } = await execAsync(
+        'docker ps -a --format "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}\t{{.Image}}"'
+      );
+
+      const lines = stdout.trim().split('\n').filter((l: string) => l);
+      const results: ExternalContainer[] = [];
+
+      for (const line of lines) {
+        const [id, name, statusText, ports, image] = line.split('\t');
+        // Skip Runway-managed containers
+        if (!name || name.startsWith('runway-')) continue;
+
+        const isRunning = statusText?.toLowerCase().includes('up') ?? false;
+
+        const container: ExternalContainer = {
+          id,
+          name,
+          image: image || '',
+          status: isRunning ? 'running' : 'stopped',
+          ports: ports || '',
+          memory: 0,
+        };
+
+        if (isRunning) {
+          try {
+            const { stdout: memStats } = await execAsync(
+              `docker stats ${id} --no-stream --format '{{.MemUsage}}'`
+            );
+            const memMatch = memStats.match(/([\d.]+)MiB/);
+            if (memMatch) container.memory = Math.round(parseFloat(memMatch[1]));
+          } catch {
+            // ignore
+          }
+        }
+
+        results.push(container);
+      }
+
+      logger.info(`Found ${results.length} external container(s)`);
+      return results;
+    } catch (error: any) {
+      logger.warn('Failed to list external containers:', error?.message || error);
+      return [];
+    }
+  }
+
+  async startContainer(id: string): Promise<void> {
+    await this.ensureDockerChecked();
+    if (!this.isDockerAvailable) throw new AppError('Docker not installed', 503);
+    try {
+      await execAsync(`docker start ${id}`);
+      eventBus.emitEvent('service:change', { containerId: id, action: 'start' });
+    } catch (error: any) {
+      throw new AppError(`Failed to start container: ${error.message}`, 500);
+    }
+  }
+
+  async stopContainer(id: string): Promise<void> {
+    await this.ensureDockerChecked();
+    if (!this.isDockerAvailable) throw new AppError('Docker not installed', 503);
+    try {
+      await execAsync(`docker stop ${id}`);
+      eventBus.emitEvent('service:change', { containerId: id, action: 'stop' });
+    } catch (error: any) {
+      throw new AppError(`Failed to stop container: ${error.message}`, 500);
+    }
+  }
+
+  async restartContainer(id: string): Promise<void> {
+    await this.ensureDockerChecked();
+    if (!this.isDockerAvailable) throw new AppError('Docker not installed', 503);
+    try {
+      await execAsync(`docker restart ${id}`);
+      eventBus.emitEvent('service:change', { containerId: id, action: 'restart' });
+    } catch (error: any) {
+      throw new AppError(`Failed to restart container: ${error.message}`, 500);
+    }
   }
 }
 
