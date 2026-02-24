@@ -256,7 +256,10 @@ export default function ProjectsPage() {
                           </div>
                         </div>
 
-                        <div className="flex items-center space-x-4">
+                        <div className="flex items-center space-x-2">
+                          {(project as any).deploymentSource === 'cli' && (
+                            <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-bold ${isSelected ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' : 'bg-purple-100 text-purple-600 border border-purple-200'}`}>CLI</span>
+                          )}
                           <div
                             className={`text-xs px-3 py-1.5 rounded-pill border transition-colors font-medium ${isSelected
                               ? "bg-zinc-800 border-zinc-700 text-zinc-300"
@@ -286,6 +289,9 @@ export default function ProjectsPage() {
                         <span className="px-3 py-1 rounded-pill border border-zinc-700 text-zinc-400 text-xs">
                           {selectedProject.status}
                         </span>
+                        {(selectedProject as any).deploymentSource === 'cli' && (
+                          <span className="px-2 py-1 rounded-pill bg-purple-500/20 border border-purple-500/30 text-purple-300 text-xs font-mono">CLI</span>
+                        )}
                       </div>
                     </div>
                     <div className="flex space-x-2">
@@ -380,11 +386,10 @@ export default function ProjectsPage() {
                         <button
                           onClick={() => rebuildProject(selectedProject.id)}
                           disabled={selectedProject.status === 'building'}
-                          className={`p-3 rounded-pill border border-zinc-700 text-zinc-400 font-medium transition-colors ${
-                            selectedProject.status === 'building'
+                          className={`p-3 rounded-pill border border-zinc-700 text-zinc-400 font-medium transition-colors ${selectedProject.status === 'building'
                               ? 'opacity-50 cursor-not-allowed'
                               : 'hover:bg-zinc-800'
-                          }`}
+                            }`}
                           title="Rebuild Project"
                         >
                           <Hammer className="w-5 h-5" />

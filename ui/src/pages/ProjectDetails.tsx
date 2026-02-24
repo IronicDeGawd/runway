@@ -343,177 +343,185 @@ export default function ProjectDetailsPage() {
             </div>
           )}
 
-          {activeTab === "environment" && (
-            <div
-              className="bg-surface-elevated rounded-card p-6 border border-zinc-800"
-              onPaste={(e) => {
-                // Don't allow paste if ENV is immutable
-                if (!isMutable) return;
+          {activeTab === "environment" && (() => {
+            // Bulk paste handler - extracted so inputs can delegate to it
+            const handleBulkPaste = (text: string) => {
+              if (!isMutable) return false;
+              if (!text || !text.includes('=')) return false;
 
-                // If the user pastes into an input, we might want to respect that default behavior
-                // UNLESS it looks like a multi-line generic paste.
-                // However, user said "paste on the page".
+              const lines = text.split(/[\r\n]+/).filter(l => l.trim());
+              if (lines.length === 0) return false;
 
-                // Let's inspect data.
-                const text = e.clipboardData.getData('text');
-                if (!text || !text.includes('=')) return;
-
-                // Simple heuristic: if it contains newlines and '=', treat as bulk import
-                // Or if it matches KEY=VALUE pattern
-                const lines = text.split(/[\r\n]+/).filter(l => l.trim());
-                if (lines.length === 0) return;
-
-                const parsed: { name: string, value: string }[] = [];
-
-                // Check valid lines
-                for (const line of lines) {
-                  const match = line.match(/^\s*([^=]+)=(.*)$/);
-                  if (match) {
-                    parsed.push({
-                      name: match[1].trim().toUpperCase().replace(/[^A-Z0-9_]/g, ''),
-                      value: match[2].trim()
-                    });
-                  }
+              const parsed: { name: string, value: string }[] = [];
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('#')) continue; // Skip comments
+                const match = trimmed.match(/^\s*([^=]+)=(.*)$/);
+                if (match) {
+                  parsed.push({
+                    name: match[1].trim().toUpperCase().replace(/[^A-Z0-9_]/g, ''),
+                    value: match[2].trim()
+                  });
                 }
+              }
 
-                if (parsed.length > 0) {
+              if (parsed.length > 0) {
+                const currentMap = new Map(localEnv.map(i => [i.name, i.value]));
+                parsed.forEach(p => currentMap.set(p.name, p.value));
+                const merged = Array.from(currentMap.entries()).map(([name, value]) => ({ name, value }));
+                setLocalEnv(merged);
+                toast.success(`Imported ${parsed.length} variables from clipboard`);
+                return true;
+              }
+              return false;
+            };
+
+            // Input-level paste interceptor for multi-line env data
+            const onInputPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+              const text = e.clipboardData.getData('text');
+              // If it looks like multi-line KEY=VALUE data, intercept it
+              if (text && text.includes('=') && text.includes('\n')) {
+                if (handleBulkPaste(text)) {
                   e.preventDefault();
-
-                  // Merge strategy: Append? Overwrite duplicates?
-                  // User said "parses and saves to the forms".
-                  // Let's Append or Update existing.
-                  const currentMap = new Map(localEnv.map(i => [i.name, i.value]));
-                  parsed.forEach(p => currentMap.set(p.name, p.value));
-
-                  const merged = Array.from(currentMap.entries()).map(([name, value]) => ({ name, value }));
-                  setLocalEnv(merged);
-                  toast.success(`Imported ${parsed.length} variables from clipboard`);
                 }
-              }}
-            >
-              {/* Immutable Warning Banner */}
-              {!mutabilityLoading && !isMutable && (
-                <div className="mb-6 p-4 bg-amber-900/20 border border-amber-700/50 rounded-lg">
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <h3 className="font-medium text-amber-400">Environment Variables Locked</h3>
-                      <p className="text-sm text-amber-300/80 mt-1">
-                        {mutability?.message || 'Environment variables cannot be modified for this project.'}
-                      </p>
+              }
+              // Otherwise allow normal single-value paste
+            };
+
+            return (
+              <div
+                className="bg-surface-elevated rounded-card p-6 border border-zinc-800"
+                onPaste={(e) => {
+                  const text = e.clipboardData.getData('text');
+                  if (handleBulkPaste(text)) {
+                    e.preventDefault();
+                  }
+                }}
+              >
+                {/* Immutable Warning Banner */}
+                {!mutabilityLoading && !isMutable && (
+                  <div className="mb-6 p-4 bg-amber-900/20 border border-amber-700/50 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <h3 className="font-medium text-amber-400">Environment Variables Locked</h3>
+                        <p className="text-sm text-amber-300/80 mt-1">
+                          {mutability?.message || 'Environment variables cannot be modified for this project.'}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              <div className="flex justify-between items-center mb-6">
-                <div>
-                  <h2 className="text-xl font-semibold text-foreground">Environment Variables</h2>
-                  <p className="text-sm text-zinc-400 mt-1">
-                    {isMutable
-                      ? 'Manage environment variables for your project. Changes are encrypted at rest.'
-                      : 'Environment variables are read-only for this deployment.'}
+                <div className="flex justify-between items-center mb-6">
+                  <div>
+                    <h2 className="text-xl font-semibold text-foreground">Environment Variables</h2>
+                    <p className="text-sm text-zinc-400 mt-1">
+                      {isMutable
+                        ? 'Manage environment variables for your project. Changes are encrypted at rest. Paste KEY=VALUE pairs to bulk import.'
+                        : 'Environment variables are read-only for this deployment.'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const newEnv = localEnv.reduce((acc, curr) => ({ ...acc, [curr.name]: curr.value }), {});
+                      updateEnv(newEnv);
+                    }}
+                    disabled={!isMutable || !hasEnvChanged || isSaving || envLoading}
+                    className="px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon/90 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? 'Building...' : 'Save Changes'}
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {envLoading ? (
+                    <div className="text-zinc-500 text-sm">Loading variables...</div>
+                  ) : (
+                    localEnv.map((item, index) => (
+                      <div key={index} className="flex gap-3">
+                        <input
+                          type="text"
+                          placeholder="KEY"
+                          value={item.name}
+                          disabled={!isMutable}
+                          onPaste={onInputPaste}
+                          onChange={(e) => {
+                            setLocalEnv(localEnv.map((envItem, i) =>
+                              i === index
+                                ? { ...envItem, name: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') }
+                                : envItem
+                            ));
+                          }}
+                          className={cn(
+                            "flex-1 px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500",
+                            !isMutable && "opacity-60 cursor-not-allowed"
+                          )}
+                        />
+                        <input
+                          type="text"
+                          placeholder="VALUE"
+                          value={item.value}
+                          disabled={!isMutable}
+                          onPaste={onInputPaste}
+                          onChange={(e) => {
+                            setLocalEnv(localEnv.map((envItem, i) =>
+                              i === index
+                                ? { ...envItem, value: e.target.value }
+                                : envItem
+                            ));
+                          }}
+                          className={cn(
+                            "flex-[2] px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500",
+                            !isMutable && "opacity-60 cursor-not-allowed"
+                          )}
+                        />
+                        <button
+                          onClick={() => {
+                            const newEnv = localEnv.filter((_, i) => i !== index);
+                            setLocalEnv(newEnv);
+                          }}
+                          disabled={!isMutable}
+                          className={cn(
+                            "p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-element",
+                            !isMutable && "opacity-60 cursor-not-allowed hover:text-zinc-500 hover:bg-transparent"
+                          )}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  )}
+
+                  {/* Only show Add Variable button when mutable */}
+                  {isMutable && (
+                    <button
+                      onClick={() => setLocalEnv([...localEnv, { name: "", value: "" }])}
+                      className="flex items-center gap-2 text-sm text-neon hover:text-neon-hover font-medium mt-2 px-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Variable
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-6 pt-6 border-t border-zinc-800">
+                  <p className="text-xs text-zinc-500">
+                    {isMutable ? (
+                      <>
+                        Note: Values are injected at runtime.
+                        {project.type === 'react'
+                          ? ' For React apps, a rebuild is triggered when you save changes.'
+                          : ' For Node/Next.js apps, the process restarts automatically.'}
+                      </>
+                    ) : (
+                      'To change environment variables, re-deploy the project with the updated values.'
+                    )}
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    const newEnv = localEnv.reduce((acc, curr) => ({ ...acc, [curr.name]: curr.value }), {});
-                    updateEnv(newEnv);
-                  }}
-                  disabled={!isMutable || !hasEnvChanged || isSaving || envLoading}
-                  className="px-4 py-2 rounded-pill bg-neon text-primary-foreground hover:bg-neon/90 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isSaving ? 'Building...' : 'Save Changes'}
-                </button>
               </div>
-
-              <div className="space-y-3">
-                {envLoading ? (
-                  <div className="text-zinc-500 text-sm">Loading variables...</div>
-                ) : (
-                  localEnv.map((item, index) => (
-                    <div key={index} className="flex gap-3">
-                      <input
-                        type="text"
-                        placeholder="KEY"
-                        value={item.name}
-                        disabled={!isMutable}
-                        onChange={(e) => {
-                          // Use immutable update to properly trigger change detection
-                          setLocalEnv(localEnv.map((envItem, i) =>
-                            i === index
-                              ? { ...envItem, name: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '') }
-                              : envItem
-                          ));
-                        }}
-                        className={cn(
-                          "flex-1 px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500",
-                          !isMutable && "opacity-60 cursor-not-allowed"
-                        )}
-                      />
-                      <input
-                        type="text"
-                        placeholder="VALUE"
-                        value={item.value}
-                        disabled={!isMutable}
-                        onChange={(e) => {
-                          // Use immutable update to properly trigger change detection
-                          setLocalEnv(localEnv.map((envItem, i) =>
-                            i === index
-                              ? { ...envItem, value: e.target.value }
-                              : envItem
-                          ));
-                        }}
-                        className={cn(
-                          "flex-[2] px-3 py-2 rounded-element bg-zinc-900 border border-zinc-700 text-foreground font-mono text-sm focus:outline-none focus:border-zinc-500",
-                          !isMutable && "opacity-60 cursor-not-allowed"
-                        )}
-                      />
-                      <button
-                        onClick={() => {
-                          const newEnv = localEnv.filter((_, i) => i !== index);
-                          setLocalEnv(newEnv);
-                        }}
-                        disabled={!isMutable}
-                        className={cn(
-                          "p-2 text-zinc-500 hover:text-red-400 hover:bg-zinc-800 rounded-element",
-                          !isMutable && "opacity-60 cursor-not-allowed hover:text-zinc-500 hover:bg-transparent"
-                        )}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))
-                )}
-
-                {/* Only show Add Variable button when mutable */}
-                {isMutable && (
-                  <button
-                    onClick={() => setLocalEnv([...localEnv, { name: "", value: "" }])}
-                    className="flex items-center gap-2 text-sm text-neon hover:text-neon-hover font-medium mt-2 px-2"
-                  >
-                    <Plus className="w-4 h-4" />
-                    Add Variable
-                  </button>
-                )}
-              </div>
-
-              <div className="mt-6 pt-6 border-t border-zinc-800">
-                <p className="text-xs text-zinc-500">
-                  {isMutable ? (
-                    <>
-                      Note: Values are injected at runtime.
-                      {project.type === 'react'
-                        ? ' For React apps, a rebuild is triggered when you save changes.'
-                        : ' For Node/Next.js apps, the process restarts automatically.'}
-                    </>
-                  ) : (
-                    'To change environment variables, re-deploy the project with the updated values.'
-                  )}
-                </p>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {activeTab === "settings" && (
             <div className="bg-surface-elevated rounded-card p-6 border border-zinc-800">

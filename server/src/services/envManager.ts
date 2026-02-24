@@ -223,6 +223,22 @@ export class EnvManager {
       throw new AppError('No build script found in package.json', 400);
     }
 
+    // Ensure dependencies are installed (node_modules may have been cleaned up after deploy)
+    const nodeModulesPath = path.join(projectDir, 'node_modules');
+    if (!await fs.pathExists(nodeModulesPath)) {
+      logger.info('node_modules missing, re-installing dependencies before React rebuild...');
+      const installCmd = project.pkgManager === 'npm'
+        ? 'npm install --include=dev'
+        : project.pkgManager === 'yarn'
+        ? 'yarn install'
+        : 'pnpm install';
+      await execAsync(installCmd, {
+        cwd: projectDir,
+        env: { ...process.env, NODE_ENV: 'development' }
+      });
+      logger.info('✅ Dependencies re-installed for rebuild');
+    }
+
     // Determine build command with base path
     const safeName = project.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
     const basePath = `/app/${safeName}`;
