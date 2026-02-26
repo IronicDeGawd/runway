@@ -453,15 +453,15 @@ CADDY_DATA_DIR="$INSTALL_DIR/data/caddy"
 mkdir -p "$CADDY_DATA_DIR/sites"
 chown -R "$REAL_USER:$REAL_USER" "$CADDY_DATA_DIR"
 
-log_info "Generating main Caddyfile with WebSocket support..."
-
-# Generate Runway-managed config as a string
-RUNWAY_CONFIG='# BEGIN RUNWAY MANAGED — Do not edit this section manually
+# Generate Runway-managed blocks with per-block markers
+RUNWAY_GLOBAL='# runway:global-start
 {
   admin localhost:2019
   auto_https off
 }
+# runway:global-end'
 
+RUNWAY_MAIN='# runway:main-start
 :80 {
   # WebSocket endpoints - MUST be before wildcard routes
   @websocket_realtime {
@@ -505,39 +505,43 @@ RUNWAY_CONFIG='# BEGIN RUNWAY MANAGED — Do not edit this section manually
     encode gzip
   }
 }
-# END RUNWAY MANAGED'
+# runway:main-end'
 
-# Check if existing Caddyfile has non-Runway (user) config blocks to preserve
+RUNWAY_CONFIG="$RUNWAY_GLOBAL
+
+$RUNWAY_MAIN"
+
+# Preserve non-Runway content from existing Caddyfile
 EXISTING_CADDYFILE="$CADDY_DATA_DIR/Caddyfile"
-USER_BLOCKS=""
+PRESERVED=""
 
 if [ -f "$EXISTING_CADDYFILE" ]; then
-    # Extract everything outside the RUNWAY MANAGED markers
-    USER_BLOCKS=$(sed -n '/^# BEGIN RUNWAY MANAGED/,/^# END RUNWAY MANAGED/!p' "$EXISTING_CADDYFILE" | sed '/^$/d')
-    
-    # Discard if the "user blocks" are actually an old unmarked Runway config
-    # (this happens on first reinstall when original config had no markers)
-    if echo "$USER_BLOCKS" | grep -q 'reverse_proxy 127.0.0.1:3000\|/opt/runway'; then
-        log_info "Discarding stale Runway config found outside managed markers"
-        USER_BLOCKS=""
-    fi
+    log_info "Found existing Caddyfile, preserving non-Runway blocks..."
 
-    if [ -n "$USER_BLOCKS" ]; then
-        log_info "Preserving existing non-Runway configuration blocks"
+    # Strip all runway-marked blocks (new per-block format: runway:*-start / runway:*-end)
+    PRESERVED=$(sed '/^# runway:.*-start$/,/^# runway:.*-end$/d' "$EXISTING_CADDYFILE")
+
+    # Also strip old-format markers if upgrading from previous version
+    PRESERVED=$(echo "$PRESERVED" | sed '/^# BEGIN RUNWAY MANAGED/,/^# END RUNWAY MANAGED/d')
+
+    # Remove blank-only leftovers
+    PRESERVED=$(echo "$PRESERVED" | sed '/^[[:space:]]*$/d')
+
+    if [ -n "$PRESERVED" ]; then
+        log_info "Preserving $(echo "$PRESERVED" | wc -l | tr -d ' ') lines of non-Runway config"
     fi
 fi
 
-# Write combined config
-if [ -n "$USER_BLOCKS" ]; then
-    printf '%s\n\n%s\n' "$RUNWAY_CONFIG" "$USER_BLOCKS" > "$CADDY_DATA_DIR/Caddyfile"
-    log_success "Main Caddyfile created with preserved user config at $CADDY_DATA_DIR/Caddyfile"
+# Write final Caddyfile: Runway blocks first, then preserved user blocks
+if [ -n "$PRESERVED" ]; then
+    printf '%s\n\n%s\n' "$RUNWAY_CONFIG" "$PRESERVED" > "$CADDY_DATA_DIR/Caddyfile"
+    log_success "Caddyfile created with preserved user config at $CADDY_DATA_DIR/Caddyfile"
 else
     echo "$RUNWAY_CONFIG" > "$CADDY_DATA_DIR/Caddyfile"
-    log_success "Main Caddyfile created at $CADDY_DATA_DIR/Caddyfile"
+    log_success "Caddyfile created at $CADDY_DATA_DIR/Caddyfile"
 fi
 
 chmod 644 "$CADDY_DATA_DIR/Caddyfile"
-log_success "Main Caddyfile created at $CADDY_DATA_DIR/Caddyfile"
 
 # Link system Caddyfile to our managed config
 log_info "Linking system Caddyfile to our managed configuration..."
