@@ -515,6 +515,13 @@ if [ -f "$EXISTING_CADDYFILE" ]; then
     # Extract everything outside the RUNWAY MANAGED markers
     USER_BLOCKS=$(sed -n '/^# BEGIN RUNWAY MANAGED/,/^# END RUNWAY MANAGED/!p' "$EXISTING_CADDYFILE" | sed '/^$/d')
     
+    # Discard if the "user blocks" are actually an old unmarked Runway config
+    # (this happens on first reinstall when original config had no markers)
+    if echo "$USER_BLOCKS" | grep -q 'reverse_proxy 127.0.0.1:3000\|/opt/runway'; then
+        log_info "Discarding stale Runway config found outside managed markers"
+        USER_BLOCKS=""
+    fi
+
     if [ -n "$USER_BLOCKS" ]; then
         log_info "Preserving existing non-Runway configuration blocks"
     fi
