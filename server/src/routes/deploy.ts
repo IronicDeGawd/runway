@@ -15,7 +15,10 @@ import { ProjectType } from '@runway/shared';
 import { extractZip, findProjectRoot } from '../services/zipService';
 
 const router = Router();
-const upload = multer({ dest: '../temp_uploads/' });
+const upload = multer({
+  dest: '../temp_uploads/',
+  limits: { fileSize: 512 * 1024 * 1024 }, // 512 MB
+});
 
 // Get all projects (with status)
 router.get('/', requireAuth, async (req, res, next) => {
