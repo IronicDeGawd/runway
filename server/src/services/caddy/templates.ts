@@ -12,8 +12,7 @@ header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}`;
 
 export const MAIN_CADDYFILE = `# runway:global-start
 {
-  admin localhost:2019
-  auto_https off
+  admin localhost:2019{{AUTO_HTTPS_DIRECTIVE}}
 }
 # runway:global-end
 
@@ -64,11 +63,14 @@ export const MAIN_CADDYFILE = `# runway:global-start
   }
 }
 # runway:main-end
+
+# User custom configuration (never overwritten by Runway)
+import {{CUSTOM_CADDY_PATH}}
 `;
 
 export const MAIN_WITH_SYSTEM = `# runway:global-start
 {
-  admin localhost:2019
+  admin localhost:2019{{AUTO_HTTPS_DIRECTIVE}}
 }
 # runway:global-end
 
@@ -123,6 +125,9 @@ import {{SYSTEM_CADDY_PATH}}
   }
 }
 # runway:main-end
+
+# User custom configuration (never overwritten by Runway)
+import {{CUSTOM_CADDY_PATH}}
 `;
 
 export const SYSTEM_DOMAIN = `# System Control Panel - {{domain}}

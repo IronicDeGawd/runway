@@ -1,7 +1,6 @@
 # runway:global-start
 {
-  admin localhost:2019
-  auto_https off
+  admin localhost:2019{{AUTO_HTTPS_DIRECTIVE}}
 }
 # runway:global-end
 
@@ -52,3 +51,6 @@
   }
 }
 # runway:main-end
+
+# User custom configuration (never overwritten by Runway)
+import {{CUSTOM_CADDY_PATH}}

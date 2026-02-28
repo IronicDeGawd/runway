@@ -258,6 +258,15 @@ class DatabaseService {
           -- Default is 0 (false) for existing users to not disrupt them
           ALTER TABLE auth ADD COLUMN must_reset_password INTEGER NOT NULL DEFAULT 0;
         `
+      },
+      {
+        name: '006_caddy_settings',
+        sql: `
+          -- Add Caddy auto_https toggle to system_config
+          -- 1 = disabled (auto_https off in Caddyfile), 0 = enabled (Caddy manages TLS)
+          -- Default 1 (off) — safe for Cloudflare tunnel / reverse proxy setups
+          ALTER TABLE system_config ADD COLUMN caddy_disable_auto_https INTEGER NOT NULL DEFAULT 1;
+        `
       }
     ];
   }

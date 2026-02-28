@@ -510,9 +510,14 @@ RUNWAY_MAIN='# runway:main-start
 }
 # runway:main-end'
 
+RUNWAY_CUSTOM_IMPORT="# User custom configuration (never overwritten by Runway)
+import $CADDY_DATA_DIR/custom.caddy"
+
 RUNWAY_CONFIG="$RUNWAY_GLOBAL
 
-$RUNWAY_MAIN"
+$RUNWAY_MAIN
+
+$RUNWAY_CUSTOM_IMPORT"
 
 # Preserve non-Runway content from existing Caddyfile
 EXISTING_CADDYFILE="$CADDY_DATA_DIR/Caddyfile"
@@ -526,6 +531,9 @@ if [ -f "$EXISTING_CADDYFILE" ]; then
 
     # Also strip old-format markers if upgrading from previous version
     PRESERVED=$(echo "$PRESERVED" | sed '/^# BEGIN RUNWAY MANAGED/,/^# END RUNWAY MANAGED/d')
+
+    # Strip the custom.caddy import line (we always re-add it in RUNWAY_CONFIG)
+    PRESERVED=$(echo "$PRESERVED" | sed '/^# User custom configuration/d' | sed '/^import.*custom\.caddy$/d')
 
     # Remove blank-only leftovers
     PRESERVED=$(echo "$PRESERVED" | sed '/^[[:space:]]*$/d')
@@ -556,6 +564,21 @@ log_success "Symlink created: /etc/caddy/Caddyfile -> $CADDY_DATA_DIR/Caddyfile"
 rm -rf /etc/caddy/sites
 ln -s "$CADDY_DATA_DIR/sites" /etc/caddy/sites
 log_success "Symlink created: /etc/caddy/sites -> $CADDY_DATA_DIR/sites"
+
+# Create custom.caddy if it doesn't exist (user-managed, never overwritten)
+CUSTOM_CADDY="$CADDY_DATA_DIR/custom.caddy"
+if [ ! -f "$CUSTOM_CADDY" ]; then
+    cat > "$CUSTOM_CADDY" << 'CUSTOMEOF'
+# custom.caddy — User-defined Caddy blocks
+# This file is never overwritten by Runway updates or redeploys.
+# Add your custom Caddy site blocks, snippets, or directives here.
+CUSTOMEOF
+    chmod 644 "$CUSTOM_CADDY"
+    chown "$REAL_USER:$REAL_USER" "$CUSTOM_CADDY"
+    log_success "Created custom.caddy for user-defined blocks"
+else
+    log_info "custom.caddy already exists — preserving user content"
+fi
 
 # Validate Caddy configuration
 log_info "Validating Caddy configuration..."

@@ -7,6 +7,7 @@ import { logger } from '../../utils/logger';
 import { AppError } from '../../middleware/errorHandler';
 import { BuildDetector } from '../buildDetector';
 import { renderTemplate } from './templateLoader';
+import { systemRepository } from '../../repositories/systemRepository';
 
 const execAsync = util.promisify(exec);
 
@@ -15,6 +16,7 @@ const CADDY_DATA_DIR = '/opt/runway/data/caddy';
 const CADDYFILE_PATH = path.join(CADDY_DATA_DIR, 'Caddyfile');
 const SITES_DIR = path.join(CADDY_DATA_DIR, 'sites');
 const SYSTEM_CADDY_PATH = path.join(CADDY_DATA_DIR, 'system.caddy');
+const CUSTOM_CADDY_PATH = path.join(CADDY_DATA_DIR, 'custom.caddy');
 const API_PORT = String(process.env.PORT || 3000);
 
 export class CaddyConfigManager {
@@ -26,6 +28,16 @@ export class CaddyConfigManager {
     try {
       await fs.ensureDir(SITES_DIR);
       logger.info(`Caddy sites directory ready at ${SITES_DIR}`);
+
+      // Ensure custom.caddy exists (user-managed, never overwritten)
+      if (!await fs.pathExists(CUSTOM_CADDY_PATH)) {
+        await fs.writeFile(
+          CUSTOM_CADDY_PATH,
+          '# custom.caddy — User-defined Caddy blocks\n# This file is never overwritten by Runway updates or redeploys.\n# Add your custom Caddy site blocks, snippets, or directives here.\n',
+          'utf-8'
+        );
+        logger.info(`Created custom.caddy at ${CUSTOM_CADDY_PATH}`);
+      }
 
       await this.updateMainCaddyfile();
 
@@ -69,22 +81,26 @@ export class CaddyConfigManager {
    */
   private async updateMainCaddyfile(): Promise<void> {
     try {
-      // Check if system domain is configured - if so, use the template that includes it
       const hasSystem = await this.hasSystemDomain();
+      const disableAutoHttps = systemRepository.getCaddyDisableAutoHttps();
+      const autoHttpsDirective = disableAutoHttps ? '\n  auto_https off' : '';
+
+      const commonVars = {
+        API_PORT,
+        SITES_DIR,
+        CUSTOM_CADDY_PATH,
+        AUTO_HTTPS_DIRECTIVE: autoHttpsDirective,
+      };
 
       const mainConfig = hasSystem
         ? await renderTemplate('main-with-system', {
-            API_PORT,
-            SITES_DIR,
+            ...commonVars,
             SYSTEM_CADDY_PATH,
           })
-        : await renderTemplate('main-caddyfile', {
-            API_PORT,
-            SITES_DIR,
-          });
+        : await renderTemplate('main-caddyfile', commonVars);
 
       await fs.writeFile(CADDYFILE_PATH, mainConfig);
-      logger.info(`Updated main Caddyfile (system domain: ${hasSystem ? 'enabled' : 'disabled'})`);
+      logger.info(`Updated main Caddyfile (system domain: ${hasSystem ? 'enabled' : 'disabled'}, auto_https: ${disableAutoHttps ? 'off' : 'on'})`);
     } catch (error) {
       logger.error('Failed to update main Caddyfile', error);
       throw error;
@@ -364,12 +380,17 @@ export class CaddyConfigManager {
   /**
    * Update main Caddyfile to include system config when domain is set
    */
-  private async updateMainCaddyfileWithSystem(domain: string): Promise<void> {
+  private async updateMainCaddyfileWithSystem(_domain: string): Promise<void> {
     try {
+      const disableAutoHttps = systemRepository.getCaddyDisableAutoHttps();
+      const autoHttpsDirective = disableAutoHttps ? '\n  auto_https off' : '';
+
       const mainConfig = await renderTemplate('main-with-system', {
         API_PORT,
         SITES_DIR,
         SYSTEM_CADDY_PATH,
+        CUSTOM_CADDY_PATH,
+        AUTO_HTTPS_DIRECTIVE: autoHttpsDirective,
       });
 
       await fs.writeFile(CADDYFILE_PATH, mainConfig);
@@ -378,6 +399,15 @@ export class CaddyConfigManager {
       logger.error('Failed to update main Caddyfile with system config', error);
       throw error;
     }
+  }
+
+  /**
+   * Public method to regenerate and reload the main Caddyfile.
+   * Used by settings API when Caddy options change.
+   */
+  async refreshMainCaddyfile(): Promise<void> {
+    await this.updateMainCaddyfile();
+    await this.reloadCaddy();
   }
 
   /**

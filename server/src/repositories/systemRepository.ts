@@ -216,6 +216,28 @@ export class SystemRepository {
       privateKey: row.rsa_private_key,
     };
   }
+
+  /**
+   * Get Caddy auto_https disabled flag
+   * true = auto_https off (disabled), false = auto_https on (Caddy manages TLS)
+   */
+  getCaddyDisableAutoHttps(): boolean {
+    const row = database.get<{ caddy_disable_auto_https: number }>(
+      'SELECT caddy_disable_auto_https FROM system_config WHERE id = 1'
+    );
+    return row?.caddy_disable_auto_https === 1;
+  }
+
+  /**
+   * Set Caddy auto_https disabled flag
+   */
+  setCaddyDisableAutoHttps(disabled: boolean): void {
+    const now = new Date().toISOString();
+    database.run(
+      'UPDATE system_config SET caddy_disable_auto_https = ?, updated_at = ? WHERE id = 1',
+      [disabled ? 1 : 0, now]
+    );
+  }
 }
 
 export const systemRepository = new SystemRepository();
