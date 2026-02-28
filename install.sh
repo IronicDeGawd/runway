@@ -486,10 +486,13 @@ RUNWAY_MAIN='# runway:main-start
   
   # Regular API routes
   handle /api/* {
+    request_body {
+      max_size 512MB
+    }
     reverse_proxy 127.0.0.1:3000 {
       transport http {
-        read_timeout 5m
-        write_timeout 5m
+        read_timeout 10m
+        write_timeout 10m
       }
     }
   }

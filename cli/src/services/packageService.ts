@@ -104,8 +104,13 @@ export class PackageService {
         break;
 
       case 'next':
-        // Include .next directory
-        this.addDirectory(archive, path.join(projectPath, '.next'), '.next');
+        // Include .next directory but exclude cache (can be 200+ MB of build cache)
+        this.addDirectoryFiltered(
+          archive,
+          path.join(projectPath, '.next'),
+          '.next',
+          ['cache/**']
+        );
 
         // Include public directory if exists
         const publicDir = path.join(projectPath, 'public');
@@ -178,6 +183,21 @@ export class PackageService {
   private addDirectory(archive: archiver.Archiver, dirPath: string, destPath: string): void {
     if (fs.existsSync(dirPath)) {
       archive.directory(dirPath, destPath);
+    }
+  }
+
+  private addDirectoryFiltered(
+    archive: archiver.Archiver,
+    dirPath: string,
+    destPath: string,
+    ignore: string[]
+  ): void {
+    if (fs.existsSync(dirPath)) {
+      archive.glob('**/*', {
+        cwd: dirPath,
+        ignore,
+        dot: true,
+      }, { prefix: destPath });
     }
   }
 
