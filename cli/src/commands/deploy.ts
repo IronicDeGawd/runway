@@ -480,9 +480,26 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
       logger.dim('Check the web UI for deployment status');
     }
   } else {
+    // No deploymentId means synchronous deploy (prebuilt) — already complete
     logger.blank();
-    logger.success('Upload successful!');
-    logger.dim('Deployment is being processed. Check the web UI for status.');
+    logger.success('Deployment successful!');
+
+    const safeName = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+    try {
+      const domainResponse = await axios.get(`${config.serverUrl}/api/domain`, {
+        headers: config.token ? { Authorization: `Bearer ${config.token}` } : {},
+      });
+      const domainConfig = domainResponse.data;
+
+      if (domainConfig.domain?.active && domainConfig.securityMode === 'domain-https') {
+        logger.info(`Your app is available at: https://${domainConfig.domain.domain}/app/${safeName}`);
+      } else {
+        logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
+      }
+    } catch {
+      logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
+    }
   }
 
   logger.blank();
