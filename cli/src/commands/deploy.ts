@@ -292,25 +292,37 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   if (buildMode === 'local') {
     logger.step(1, 4, 'Building project...');
 
-    // Patch React Router basename before build (if applicable)
-    let didPatch = false;
+    // Patch framework configs before build (inject basePath for subpath routing)
+    let didPatchReact = false;
+    let didPatchNext = false;
+
     if (projectType === 'react') {
       const { ReactPatcher } = await import('../services/reactPatcher');
-      didPatch = await ReactPatcher.patch(process.cwd());
+      didPatchReact = await ReactPatcher.patch(process.cwd());
+    } else if (projectType === 'next') {
+      const { NextPatcher } = await import('../services/nextPatcher');
+      didPatchNext = await NextPatcher.patch(process.cwd(), projectName);
     }
 
-    const buildResult = await buildService.build({
-      projectPath: process.cwd(),
-      projectType,
-      projectName,
-      packageManager: detectedProject.packageManager,
-      envFile: envFilePath,
-    });
-
-    // Revert patch after build (keep user's source clean)
-    if (didPatch) {
-      const { ReactPatcher } = await import('../services/reactPatcher');
-      await ReactPatcher.revert(process.cwd());
+    let buildResult;
+    try {
+      buildResult = await buildService.build({
+        projectPath: process.cwd(),
+        projectType,
+        projectName,
+        packageManager: detectedProject.packageManager,
+        envFile: envFilePath,
+      });
+    } finally {
+      // Always revert patches after build (keep user's source clean)
+      if (didPatchReact) {
+        const { ReactPatcher } = await import('../services/reactPatcher');
+        await ReactPatcher.revert(process.cwd());
+      }
+      if (didPatchNext) {
+        const { NextPatcher } = await import('../services/nextPatcher');
+        await NextPatcher.revert(process.cwd());
+      }
     }
 
     if (!buildResult.success) {
