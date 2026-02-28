@@ -29,10 +29,13 @@ import {{SYSTEM_CADDY_PATH}}
 
   # Regular API requests
   handle /api/* {
+    request_body {
+      max_size 512MB
+    }
     reverse_proxy 127.0.0.1:{{API_PORT}} {
       transport http {
-        read_timeout 5m
-        write_timeout 5m
+        read_timeout 10m
+        write_timeout 10m
       }
     }
   }
