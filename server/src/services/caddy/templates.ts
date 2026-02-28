@@ -10,11 +10,14 @@ header_up X-Real-IP {http.request.header.X-Real-IP}
 header_up X-Forwarded-For {http.request.header.X-Forwarded-For}
 header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}`;
 
-export const MAIN_CADDYFILE = `{
+export const MAIN_CADDYFILE = `# runway:global-start
+{
   admin localhost:2019
   auto_https off
 }
+# runway:global-end
 
+# runway:main-start
 :80 {
   # WebSocket support for realtime updates
   @websocket_realtime {
@@ -60,15 +63,19 @@ export const MAIN_CADDYFILE = `{
     encode gzip
   }
 }
+# runway:main-end
 `;
 
-export const MAIN_WITH_SYSTEM = `{
+export const MAIN_WITH_SYSTEM = `# runway:global-start
+{
   admin localhost:2019
 }
+# runway:global-end
 
 # Import system domain configuration (HTTPS)
 import {{SYSTEM_CADDY_PATH}}
 
+# runway:main-start
 # Fallback HTTP access (IP-based)
 :80 {
   # WebSocket support for realtime updates
@@ -115,6 +122,7 @@ import {{SYSTEM_CADDY_PATH}}
     encode gzip
   }
 }
+# runway:main-end
 `;
 
 export const SYSTEM_DOMAIN = `# System Control Panel - {{domain}}

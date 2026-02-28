@@ -1,10 +1,13 @@
+# runway:global-start
 {
   admin localhost:2019
 }
+# runway:global-end
 
 # Import system domain configuration (HTTPS)
 import {{SYSTEM_CADDY_PATH}}
 
+# runway:main-start
 # Fallback HTTP access (IP-based)
 :80 {
   # WebSocket support for realtime updates
@@ -51,3 +54,4 @@ import {{SYSTEM_CADDY_PATH}}
     encode gzip
   }
 }
+# runway:main-end

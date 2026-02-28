@@ -1,8 +1,11 @@
+# runway:global-start
 {
   admin localhost:2019
   auto_https off
 }
+# runway:global-end
 
+# runway:main-start
 :80 {
   # WebSocket support for realtime updates
   @websocket_realtime {
@@ -48,3 +51,4 @@
     encode gzip
   }
 }
+# runway:main-end
