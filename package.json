@@ -14,7 +14,7 @@
     "test": "npm run test --workspaces --if-present"
   },
   "dependencies": {
-    "@swc/core": "^1.15.11"
+    "@swc/core": "^1.15.17"
   },
   "version": "0.1.0"
 }
