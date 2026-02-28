@@ -107,24 +107,36 @@ export async function updateCommand(): Promise<void> {
   // Step 1: Build locally
   logger.step(1, 3, 'Building project...');
 
-  // Patch React Router basename before build (if applicable)
-  let didPatch = false;
+  // Patch framework configs before build (inject basePath for subpath routing)
+  let didPatchReact = false;
+  let didPatchNext = false;
+
   if (projectType === 'react') {
     const { ReactPatcher } = await import('../services/reactPatcher');
-    didPatch = await ReactPatcher.patch(process.cwd());
+    didPatchReact = await ReactPatcher.patch(process.cwd());
+  } else if (projectType === 'next') {
+    const { NextPatcher } = await import('../services/nextPatcher');
+    didPatchNext = await NextPatcher.patch(process.cwd(), projectName);
   }
 
-  const buildResult = await buildService.build({
-    projectPath: process.cwd(),
-    projectType,
-    projectName,
-    packageManager: detectedProject.packageManager,
-  });
-
-  // Revert patch after build (keep user's source clean)
-  if (didPatch) {
-    const { ReactPatcher } = await import('../services/reactPatcher');
-    await ReactPatcher.revert(process.cwd());
+  let buildResult;
+  try {
+    buildResult = await buildService.build({
+      projectPath: process.cwd(),
+      projectType,
+      projectName,
+      packageManager: detectedProject.packageManager,
+    });
+  } finally {
+    // Always revert patches after build (keep user's source clean)
+    if (didPatchReact) {
+      const { ReactPatcher } = await import('../services/reactPatcher');
+      await ReactPatcher.revert(process.cwd());
+    }
+    if (didPatchNext) {
+      const { NextPatcher } = await import('../services/nextPatcher');
+      await NextPatcher.revert(process.cwd());
+    }
   }
 
   if (!buildResult.success) {
@@ -228,7 +240,25 @@ export async function updateCommand(): Promise<void> {
       logger.warn('Could not track deployment status. Check the web UI.');
     }
   } else {
-    logger.success('Upload successful! Check web UI for deployment status.');
+    // No deploymentId means synchronous deploy (prebuilt) — already complete
+    logger.blank();
+    logger.success(`"${projectName}" updated successfully!`);
+
+    const safeName = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+
+    try {
+      const domainResponse = await axios.get(`${config.serverUrl}/api/domain`, {
+        headers: config.token ? { Authorization: `Bearer ${config.token}` } : {},
+      });
+      const domainConfig = domainResponse.data;
+      if (domainConfig.domain?.active && domainConfig.securityMode === 'domain-https') {
+        logger.info(`Your app is available at: https://${domainConfig.domain.domain}/app/${safeName}`);
+      } else {
+        logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
+      }
+    } catch {
+      logger.info(`Your app is available at: ${config.serverUrl}/app/${safeName}`);
+    }
   }
 
   logger.blank();
