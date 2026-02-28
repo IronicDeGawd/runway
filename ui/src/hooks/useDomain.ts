@@ -143,8 +143,8 @@ export function useDomain() {
     };
   }, [queryClient, on, off]);
 
-  // Helper to check if in HTTPS mode
-  const isSecure = domainConfig?.securityMode === 'domain-https';
+  // Helper to check if in HTTPS mode - must also verify actual connection is HTTPS
+  const isSecure = domainConfig?.securityMode === 'domain-https' && window.location.protocol === 'https:';
 
   // Helper to get the formatted server IP
   const serverIp = domainConfig?.serverIp || statusData?.serverIp || null;

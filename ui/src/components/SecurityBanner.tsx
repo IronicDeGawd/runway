@@ -6,7 +6,7 @@ import { useDomain } from '@/hooks/useDomain';
 const BANNER_DISMISSED_KEY = 'security-banner-dismissed';
 
 export function SecurityBanner() {
-  const { isSecure, isLoading } = useDomain();
+  const { isSecure, isLoading, securityMode, domain } = useDomain();
   const [dismissed, setDismissed] = useState(false);
 
   // Check if banner was previously dismissed in this session
@@ -27,19 +27,39 @@ export function SecurityBanner() {
     return null;
   }
 
+  // HTTPS configured but accessing via HTTP (e.g. via IP)
+  const hasHttpsButAccessingViaHttp =
+    securityMode === 'domain-https' && window.location.protocol !== 'https:';
+
   return (
     <div className="bg-yellow-500/10 border-b border-yellow-500/20 px-4 py-2">
       <div className="flex items-center justify-between max-w-7xl mx-auto">
         <div className="flex items-center gap-2 text-yellow-600">
           <AlertTriangle className="h-4 w-4 flex-shrink-0" />
           <span className="text-sm">
-            Running without HTTPS. CLI authentication uses RSA key exchange (MITM vulnerable).
-            <Link
-              to="/settings"
-              className="underline ml-1 hover:text-yellow-500 transition-colors"
-            >
-              Configure a domain
-            </Link>
+            {hasHttpsButAccessingViaHttp ? (
+              <>
+                You're accessing via HTTP but HTTPS is available.
+                {domain?.domain && (
+                  <a
+                    href={`https://${domain.domain}`}
+                    className="underline ml-1 hover:text-yellow-500 transition-colors"
+                  >
+                    Switch to {domain.domain}
+                  </a>
+                )}
+              </>
+            ) : (
+              <>
+                Running without HTTPS. CLI authentication uses RSA key exchange (MITM vulnerable).
+                <Link
+                  to="/settings"
+                  className="underline ml-1 hover:text-yellow-500 transition-colors"
+                >
+                  Configure a domain
+                </Link>
+              </>
+            )}
           </span>
         </div>
         <button

@@ -88,9 +88,15 @@ export async function initCommand(options: InitOptions): Promise<void> {
   }
 
   // Display security info
-  if (securityInfo.securityMode === 'domain-https') {
+  const isConnectionSecure = serverUrl.startsWith('https://');
+  if (securityInfo.securityMode === 'domain-https' && isConnectionSecure) {
     logger.success(`Server has HTTPS enabled: ${securityInfo.domain}`);
     logger.dim('Authentication will use secure TLS connection.');
+  } else if (securityInfo.securityMode === 'domain-https' && !isConnectionSecure) {
+    logger.warn(`Server has HTTPS available (${securityInfo.domain}) but you're connecting via HTTP`);
+    logger.dim(`Consider using https://${securityInfo.domain} instead of ${serverUrl}`);
+    logger.dim('Current connection is NOT encrypted.');
+    logger.blank();
   } else {
     logger.warn('Server is running in HTTP mode (no domain configured)');
     logger.dim('Authentication will use RSA key exchange (MITM vulnerable).');
