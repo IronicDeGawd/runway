@@ -48,6 +48,9 @@ export class PackageService {
 
       archive.pipe(output);
 
+      // Include CLI metadata in the package
+      this.addRunwayMetadata(archive, includeSource ? 'server' : 'local', projectType);
+
       if (includeSource) {
         // Server-build mode: include source files
         this.addSourceFiles(archive, projectPath);
@@ -177,6 +180,29 @@ export class PackageService {
 
         logger.dim('Including static site files');
         break;
+    }
+  }
+
+  private addRunwayMetadata(
+    archive: archiver.Archiver,
+    buildMode: 'local' | 'server',
+    projectType: ProjectType
+  ): void {
+    try {
+      const cliPkg = JSON.parse(
+        fs.readFileSync(path.join(__dirname, '../../package.json'), 'utf-8')
+      );
+      const metadata = {
+        cliVersion: cliPkg.version,
+        buildMode,
+        projectType,
+        packagedAt: new Date().toISOString(),
+      };
+      archive.append(Buffer.from(JSON.stringify(metadata, null, 2) + '\n'), {
+        name: '.runway-metadata.json',
+      });
+    } catch {
+      // Non-critical — skip silently
     }
   }
 
