@@ -128,15 +128,12 @@ export async function updateCommand(): Promise<void> {
       packageManager: detectedProject.packageManager,
     });
   } finally {
-    // Always revert patches after build (keep user's source clean)
+    // Revert React patch after build (static assets don't need config at runtime)
     if (didPatchReact) {
       const { ReactPatcher } = await import('../services/reactPatcher');
       await ReactPatcher.revert(process.cwd());
     }
-    if (didPatchNext) {
-      const { NextPatcher } = await import('../services/nextPatcher');
-      await NextPatcher.revert(process.cwd());
-    }
+    // Next.js patch is reverted after packaging — next start needs basePath in config at runtime
   }
 
   if (!buildResult.success) {
@@ -161,6 +158,12 @@ export async function updateCommand(): Promise<void> {
   } catch (error) {
     logger.error(`Packaging failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     return;
+  } finally {
+    // Revert Next.js patch after packaging (config is included in zip with basePath intact)
+    if (didPatchNext) {
+      const { NextPatcher } = await import('../services/nextPatcher');
+      await NextPatcher.revert(process.cwd());
+    }
   }
 
   logger.blank();

@@ -288,13 +288,13 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
 
   // Step 1: Build (for local-build mode)
   let buildOutputDir = detectedProject.buildOutputDir;
+  let didPatchNext = false;
 
   if (buildMode === 'local') {
     logger.step(1, 4, 'Building project...');
 
     // Patch framework configs before build (inject basePath for subpath routing)
     let didPatchReact = false;
-    let didPatchNext = false;
 
     if (projectType === 'react') {
       const { ReactPatcher } = await import('../services/reactPatcher');
@@ -314,15 +314,12 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
         envFile: envFilePath,
       });
     } finally {
-      // Always revert patches after build (keep user's source clean)
+      // Revert React patch after build (static assets don't need config at runtime)
       if (didPatchReact) {
         const { ReactPatcher } = await import('../services/reactPatcher');
         await ReactPatcher.revert(process.cwd());
       }
-      if (didPatchNext) {
-        const { NextPatcher } = await import('../services/nextPatcher');
-        await NextPatcher.revert(process.cwd());
-      }
+      // Next.js patch is reverted after packaging — next start needs basePath in config at runtime
     }
 
     if (!buildResult.success) {
@@ -353,6 +350,12 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   } catch (error) {
     logger.error(`Packaging failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     return;
+  } finally {
+    // Revert Next.js patch after packaging (config is included in zip with basePath intact)
+    if (didPatchNext) {
+      const { NextPatcher } = await import('../services/nextPatcher');
+      await NextPatcher.revert(process.cwd());
+    }
   }
 
   logger.blank();

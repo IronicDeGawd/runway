@@ -28,40 +28,52 @@ export async function logsCommand(project?: string, options: LogsOptions = {}): 
 
   const config = getConfig();
 
-  // If no project specified, list and let user choose
-  let projectId = project;
-  let projectName = project;
+  let uploadService;
+  try {
+    uploadService = createUploadService();
+  } catch (error) {
+    logger.error(error instanceof Error ? error.message : 'Unknown error');
+    return;
+  }
 
-  if (!projectId) {
-    let uploadService;
-    try {
-      uploadService = createUploadService();
-    } catch (error) {
-      logger.error(error instanceof Error ? error.message : 'Unknown error');
+  let projects;
+  try {
+    projects = await uploadService.listProjects();
+  } catch (error) {
+    logger.error('Failed to fetch projects');
+    return;
+  }
+
+  if (projects.length === 0) {
+    logger.warn('No projects deployed.');
+    return;
+  }
+
+  // Filter to only PM2-managed projects (node, next)
+  const pm2Projects = projects.filter(p => p.type === 'node' || p.type === 'next');
+
+  if (pm2Projects.length === 0) {
+    logger.warn('No Node.js or Next.js projects found. Logs are only available for PM2-managed projects.');
+    return;
+  }
+
+  let projectId: string;
+  let projectName: string;
+
+  if (project) {
+    // Resolve name to ID
+    const match = pm2Projects.find(p => p.name.toLowerCase() === project.toLowerCase());
+    if (!match) {
+      logger.error(`Project "${project}" not found or is not a PM2-managed project.`);
+      logger.dim('Available projects:');
+      for (const p of pm2Projects) {
+        logger.dim(`  - ${p.name}`);
+      }
       return;
     }
-
-    let projects;
-    try {
-      projects = await uploadService.listProjects();
-    } catch (error) {
-      logger.error('Failed to fetch projects');
-      return;
-    }
-
-    if (projects.length === 0) {
-      logger.warn('No projects deployed.');
-      return;
-    }
-
-    // Filter to only PM2-managed projects (node, next)
-    const pm2Projects = projects.filter(p => p.type === 'node' || p.type === 'next');
-
-    if (pm2Projects.length === 0) {
-      logger.warn('No Node.js or Next.js projects found. Logs are only available for PM2-managed projects.');
-      return;
-    }
-
+    projectId = match.id;
+    projectName = match.name;
+  } else {
     const { selected } = await inquirer.prompt([
       {
         type: 'list',
