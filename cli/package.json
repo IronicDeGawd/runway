@@ -1,6 +1,6 @@
 {
   "name": "runway-cli",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "description": "CLI tool for deploying projects to Runway",
   "main": "dist/index.js",
   "bin": {
