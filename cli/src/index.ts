@@ -11,6 +11,7 @@ import { metricsCommand } from './commands/metrics';
 import { loginCommand } from './commands/login';
 import { updateCommand } from './commands/update';
 import { logsCommand } from './commands/logs';
+import { buildEnvCommand } from './commands/env';
 
 const program = new Command();
 
@@ -48,7 +49,11 @@ program
 program
   .command('update')
   .description('Update an existing deployed project')
+  .option('-e, --env-file <path>', 'Path to environment file')
   .action(updateCommand);
+
+// Env command (manage environment variables)
+program.addCommand(buildEnvCommand());
 
 // List command
 program
