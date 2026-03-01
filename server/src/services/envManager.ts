@@ -88,6 +88,13 @@ export class EnvManager {
       throw new AppError('Project not found', 404);
     }
 
+    // Node.js and Next.js always have mutable runtime ENV (PM2 injection)
+    // Next.js runs as a PM2 process — non-NEXT_PUBLIC_* vars are injected
+    // at runtime via ecosystem config, regardless of source/build artifacts.
+    if (project.type === 'node' || project.type === 'next') {
+      return { mutable: true };
+    }
+
     // Use the stored envMutable flag from project config
     if (project.envMutable === false) {
       // Determine reason based on project metadata

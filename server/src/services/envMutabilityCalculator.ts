@@ -18,11 +18,12 @@ export interface MutabilityInput {
  * Calculates ENV mutability based on deployment characteristics
  *
  * Rules:
- * - Node.js: Always mutable (runtime ENV injection via PM2)
+ * - Node.js / Next.js: Always mutable (runtime ENV injection via PM2)
+ *   Next.js runs as a PM2 process — non-NEXT_PUBLIC_* vars are runtime vars
+ *   injected via ecosystem config, regardless of whether source is present.
  * - Static sites: Always immutable (no runtime)
- * - React/Next full project with source: Mutable (can rebuild)
- * - React/Next dist-only: Immutable (no source to rebuild)
- * - CLI deploy without ENV injection: Immutable (ENV baked in at build time)
+ * - React dist-only: Immutable (no source to rebuild, vars are build-time only)
+ * - React CLI deploy without ENV injection: Immutable (ENV baked in at build time)
  */
 export class EnvMutabilityCalculator {
   /**
@@ -40,12 +41,15 @@ export class EnvMutabilityCalculator {
       };
     }
 
-    // Node.js always has mutable ENV (runtime injection via PM2 restart)
-    if (projectType === 'node') {
+    // Node.js and Next.js always have mutable ENV (runtime injection via PM2 restart)
+    // Next.js runs as a PM2 process — non-NEXT_PUBLIC_* vars are available at runtime
+    // via process.env, injected through PM2 ecosystem config. Only NEXT_PUBLIC_* vars
+    // are build-time and would require a rebuild, but runtime vars work without source.
+    if (projectType === 'node' || projectType === 'next') {
       return { mutable: true };
     }
 
-    // React/Next: dist-only deploys are immutable (no source to rebuild)
+    // React: dist-only deploys are immutable (no source to rebuild)
     if (uploadType === 'dist' || !hasSource) {
       return {
         mutable: false,
@@ -55,7 +59,7 @@ export class EnvMutabilityCalculator {
       };
     }
 
-    // CLI deploy with local build but without ENV injection
+    // React CLI deploy with local build but without ENV injection
     // The ENV vars were not injected during build, so they're baked in empty
     if (deploymentSource === 'cli' && uploadType === 'build' && !envInjected) {
       return {

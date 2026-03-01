@@ -72,6 +72,9 @@ doc/*.md
 # Releases (built artifacts)
 releases/
 
+# Context (working docs, plans, research)
+context/
+
 # Misc
 *.local
 .cache/
