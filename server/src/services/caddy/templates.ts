@@ -218,13 +218,24 @@ export const PROJECT_STATIC_PATH = `handle_path {{projectPath}}* {
     encode gzip
   }`;
 
-export const PROJECT_DYNAMIC_PATH = `handle_path {{projectPath}}* {
+// Next.js: preserve full path (basePath handles prefix internally)
+export const PROJECT_DYNAMIC_PATH = `handle {{projectPath}}* {
     reverse_proxy 127.0.0.1:{{port}} {
       # WebSocket support
       {{WEBSOCKET_HEADERS}}
       # Pass original path info to backend
       header_up X-Forwarded-Prefix {{projectPath}}
       header_up X-Original-URI {uri}
+    }
+    encode gzip
+  }`;
+
+// Node.js: strip prefix so app receives requests at /
+export const PROJECT_DYNAMIC_PATH_STRIPPED = `handle_path {{projectPath}}* {
+    reverse_proxy 127.0.0.1:{{port}} {
+      # WebSocket support
+      {{WEBSOCKET_HEADERS}}
+      header_up X-Forwarded-Prefix {{projectPath}}
     }
     encode gzip
   }`;
@@ -240,4 +251,5 @@ export const TEMPLATES: Record<string, string> = {
   'project-dynamic-domain': PROJECT_DYNAMIC_DOMAIN,
   'project-static-path': PROJECT_STATIC_PATH,
   'project-dynamic-path': PROJECT_DYNAMIC_PATH,
+  'project-dynamic-path-stripped': PROJECT_DYNAMIC_PATH_STRIPPED,
 };

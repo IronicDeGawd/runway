@@ -630,6 +630,15 @@ export class DeploymentService {
         }
       }
 
+      // 4.5. Apply patches (basePath/assetPrefix for Next.js runtime config)
+      if (type !== 'static') {
+        await patcherService.patchProject(stagingDir, type, {
+          projectId: 'prebuilt',
+          projectName,
+          deploymentId: 'prebuilt'
+        });
+      }
+
       // 5. Verify build output exists
       if (type === 'react') {
         const distPath = path.join(stagingDir, 'dist');

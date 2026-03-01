@@ -1,4 +1,4 @@
-handle_path {{projectPath}}* {
+handle {{projectPath}}* {
     reverse_proxy 127.0.0.1:{{port}} {
       # WebSocket support
       {{WEBSOCKET_HEADERS}}

@@ -185,7 +185,12 @@ export class CaddyConfigManager {
         configs.push(pathConfig);
       }
     } else {
-      const pathConfig = await renderTemplate('project-dynamic-path', {
+      // Next.js uses `handle` (full path preserved — basePath handles routing)
+      // Node.js uses `handle_path` (prefix stripped — app expects requests at /)
+      const templateName = project.type === 'next'
+        ? 'project-dynamic-path'
+        : 'project-dynamic-path-stripped';
+      const pathConfig = await renderTemplate(templateName, {
         projectPath,
         port: String(project.port),
       });

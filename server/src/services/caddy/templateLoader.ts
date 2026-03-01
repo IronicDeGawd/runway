@@ -10,7 +10,8 @@ export type TemplateName =
   | 'project-static-domain'
   | 'project-dynamic-domain'
   | 'project-static-path'
-  | 'project-dynamic-path';
+  | 'project-dynamic-path'
+  | 'project-dynamic-path-stripped';
 
 /**
  * Template variables type - all values must be strings
