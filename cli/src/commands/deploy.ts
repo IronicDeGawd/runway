@@ -8,8 +8,10 @@ import { detectProject } from '../services/projectDetector';
 import { buildService } from '../services/buildService';
 import { packageService } from '../services/packageService';
 import { createUploadService } from '../services/uploadService';
+import { createEnvService } from '../services/envService';
 import { isConfigured, getConfig, isTokenExpired } from '../utils/config';
 import { logger } from '../utils/logger';
+import { parseEnvFile, promptEnvOptions, categorizeEnvVars, showEnvSummary } from '../utils/envUtils';
 
 interface DeployOptions {
   name?: string;
@@ -19,120 +21,6 @@ interface DeployOptions {
   buildServer?: boolean;
   envFile?: string;
   skipEnvPrompt?: boolean;
-}
-
-/**
- * Parse a .env file into a Record
- */
-function parseEnvFile(filePath: string): Record<string, string> {
-  const content = fs.readFileSync(filePath, 'utf-8');
-  const vars: Record<string, string> = {};
-
-  for (const line of content.split('\n')) {
-    const trimmed = line.trim();
-    // Skip empty lines and comments
-    if (!trimmed || trimmed.startsWith('#')) continue;
-
-    const eqIndex = trimmed.indexOf('=');
-    if (eqIndex > 0) {
-      const key = trimmed.slice(0, eqIndex).trim();
-      let value = trimmed.slice(eqIndex + 1).trim();
-      // Remove surrounding quotes if present
-      if ((value.startsWith('"') && value.endsWith('"')) ||
-          (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
-      }
-      vars[key] = value;
-    }
-  }
-
-  return vars;
-}
-
-/**
- * Prompt user for manual ENV variable entry
- */
-async function promptManualEnvVars(): Promise<Record<string, string>> {
-  const vars: Record<string, string> = {};
-
-  logger.dim('Enter environment variables (empty name to finish):');
-
-  while (true) {
-    const { key } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'key',
-        message: 'Variable name:',
-      },
-    ]);
-
-    if (!key || !key.trim()) {
-      break;
-    }
-
-    const { value } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'value',
-        message: `Value for ${key}:`,
-      },
-    ]);
-
-    vars[key.toUpperCase().replace(/[^A-Z0-9_]/g, '')] = value;
-  }
-
-  return vars;
-}
-
-/**
- * Prompt user for environment variable options when no .env file exists
- */
-async function promptEnvOptions(): Promise<string | undefined> {
-  const { envChoice } = await inquirer.prompt([
-    {
-      type: 'list',
-      name: 'envChoice',
-      message: 'How would you like to provide environment variables?',
-      choices: [
-        { name: 'Specify path to .env file', value: 'path' },
-        { name: 'Enter variables manually (creates .env)', value: 'manual' },
-        { name: 'Continue without environment variables', value: 'skip' },
-      ],
-    },
-  ]);
-
-  if (envChoice === 'path') {
-    const { envPath } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'envPath',
-        message: 'Path to env file:',
-        validate: (input: string) => {
-          if (!input.trim()) return 'Please enter a path';
-          if (!fs.existsSync(input)) return 'File not found';
-          return true;
-        },
-      },
-    ]);
-    logger.success(`Using env file: ${envPath}`);
-    return envPath;
-  }
-
-  if (envChoice === 'manual') {
-    const vars = await promptManualEnvVars();
-    if (Object.keys(vars).length > 0) {
-      // Write to .env file in project
-      const envContent = Object.entries(vars)
-        .map(([k, v]) => `${k}=${v}`)
-        .join('\n');
-      const envPath = path.join(process.cwd(), '.env');
-      fs.writeFileSync(envPath, envContent);
-      logger.success(`Created .env with ${Object.keys(vars).length} variables`);
-      return envPath;
-    }
-  }
-
-  return undefined;
 }
 
 export async function deployCommand(options: DeployOptions): Promise<void> {
@@ -266,6 +154,9 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   logger.info(`Build mode: ${buildMode}`);
   if (options.version) {
     logger.info(`Version: ${options.version}`);
+  }
+  if (envInjected) {
+    showEnvSummary(envVars, projectType);
   }
   logger.blank();
 
@@ -433,6 +324,21 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   }
 
   logger.success('Upload complete');
+
+  // Push runtime env vars to server for Next.js/Node.js (non-build-time vars)
+  if (envInjected && uploadResult.projectId && (projectType === 'next' || projectType === 'node')) {
+    const { runtime } = categorizeEnvVars(envVars, projectType);
+    if (Object.keys(runtime).length > 0) {
+      try {
+        const envService = createEnvService();
+        await envService.setEnv(uploadResult.projectId, runtime);
+        logger.success(`Pushed ${Object.keys(runtime).length} runtime env vars to server`);
+      } catch (error) {
+        logger.warn(`Could not push runtime env vars: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  }
+
   logger.blank();
 
   // Step 4: Wait for deployment (if deployment ID available)
