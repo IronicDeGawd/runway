@@ -74,6 +74,15 @@ export async function statusCommand(projectName: string): Promise<void> {
     const safeName = project.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
     console.log(`  ${chalk.dim('URL:')}      ${config.serverUrl}/app/${safeName}`);
 
+    if (project.lastDeployStatus) {
+      const deployBadge = getDeployBadge(project.lastDeployStatus);
+      const timeStr = project.lastDeployedAt ? ` ${chalk.dim(`(${formatTimeAgo(project.lastDeployedAt)})`)}` : '';
+      console.log(`  ${chalk.dim('Deploy:')}   ${deployBadge}${timeStr}`);
+      if (project.lastDeployStatus === 'failed' && project.lastDeployError) {
+        console.log(`  ${chalk.dim('         ')} ${chalk.red(project.lastDeployError)}`);
+      }
+    }
+
     logger.blank();
   } catch (error) {
     spinner.fail('Failed to fetch status');
@@ -114,6 +123,35 @@ function formatUptime(seconds: number): string {
     return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
   }
   return `${Math.floor(seconds / 86400)}d ${Math.floor((seconds % 86400) / 3600)}h`;
+}
+
+function getDeployBadge(status: string): string {
+  switch (status) {
+    case 'success':
+      return chalk.black.bgGreen(' SUCCESS ');
+    case 'failed':
+      return chalk.white.bgRed(' FAILED ');
+    case 'deploying':
+    case 'building':
+    case 'queued':
+      return chalk.black.bgBlue(` ${status.toUpperCase()} `);
+    default:
+      return chalk.white.bgGray(` ${status.toUpperCase()} `);
+  }
+}
+
+function formatTimeAgo(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const diffSec = Math.floor(diffMs / 1000);
+  if (diffSec < 60) return `${diffSec}s ago`;
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDays = Math.floor(diffHr / 24);
+  return `${diffDays}d ago`;
 }
 
 function formatBytes(bytes: number): string {

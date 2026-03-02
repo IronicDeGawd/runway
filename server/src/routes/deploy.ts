@@ -13,6 +13,7 @@ import { DeployAnalyzer } from '../services/deployAnalyzer';
 import { AppError } from '../middleware/errorHandler';
 import { ProjectType } from '@runway/shared';
 import { extractZip, findProjectRoot } from '../services/zipService';
+import { deploymentRepository } from '../repositories';
 
 const router = Router();
 const upload = multer({
@@ -32,11 +33,17 @@ router.get('/', requireAuth, async (req, res, next) => {
       statusMap.set(proc.name, proc.status);
     }
 
-    // Merge status into projects
-    const projectsWithStatus = projects.map(project => ({
-      ...project,
-      status: statusMap.get(project.id) || 'stopped',
-    }));
+    // Merge status and last deployment info into projects
+    const projectsWithStatus = projects.map(project => {
+      const lastDeploy = deploymentRepository.getLatestByProject(project.id);
+      return {
+        ...project,
+        status: statusMap.get(project.id) || 'stopped',
+        lastDeployStatus: lastDeploy?.status,
+        lastDeployedAt: lastDeploy?.completedAt || lastDeploy?.startedAt,
+        lastDeployError: lastDeploy?.errorMessage,
+      };
+    });
 
     res.json({ success: true, data: projectsWithStatus });
   } catch (error) {

@@ -298,6 +298,20 @@ export async function updateCommand(options: UpdateOptions): Promise<void> {
 
   logger.blank();
 
+  // Push runtime env vars to server BEFORE upload (so they're not lost if upload times out)
+  if (envInjected && (projectType === 'next' || projectType === 'node')) {
+    const { runtime } = categorizeEnvVars(envVars, projectType);
+    if (Object.keys(runtime).length > 0) {
+      try {
+        const envService = createEnvService();
+        await envService.setEnv(projectId, runtime);
+        logger.success(`Pushed ${Object.keys(runtime).length} runtime env vars to server`);
+      } catch (error) {
+        logger.warn(`Could not push runtime env vars: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  }
+
   // Step 3: Upload as update
   logger.step(3, 3, 'Uploading update to server...');
 
@@ -314,26 +328,18 @@ export async function updateCommand(options: UpdateOptions): Promise<void> {
   packageService.cleanup(packageResult.zipPath);
 
   if (!uploadResult.success) {
+    if (uploadResult.uploadCompleted) {
+      // Upload bytes were sent but server response timed out — deployment likely in progress
+      logger.warn('Server is still processing the deployment.');
+      logger.info(`Check status with: runway status ${projectName}`);
+      logger.blank();
+      return;
+    }
     logger.error(`Upload failed: ${uploadResult.error}`);
     return;
   }
 
   logger.success('Upload complete');
-
-  // Push runtime env vars to server for Next.js/Node.js
-  if (envInjected && (projectType === 'next' || projectType === 'node')) {
-    const { runtime } = categorizeEnvVars(envVars, projectType);
-    if (Object.keys(runtime).length > 0) {
-      const targetId = uploadResult.projectId || projectId;
-      try {
-        const envService = createEnvService();
-        await envService.setEnv(targetId, runtime);
-        logger.success(`Pushed ${Object.keys(runtime).length} runtime env vars to server`);
-      } catch (error) {
-        logger.warn(`Could not push runtime env vars: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
-    }
-  }
 
   logger.blank();
 

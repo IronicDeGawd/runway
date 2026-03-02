@@ -18,6 +18,7 @@ import { BuildDetector } from './buildDetector';
 import { patcherService } from './patcher/patcherService';
 import { UploadTypeDetector } from './uploadTypeDetector';
 import { EnvMutabilityCalculator } from './envMutabilityCalculator';
+import { deploymentRepository } from '../repositories';
 
 const execAsync = util.promisify(exec);
 
@@ -65,12 +66,37 @@ export class DeploymentService {
     return 'npm';
   }
 
+  /**
+   * Ensure the detected package manager binary is available on the server.
+   * If pnpm or yarn is missing, install it globally via npm.
+   */
+  private async ensurePackageManager(manager: PackageManager): Promise<void> {
+    if (manager === 'npm') return; // npm is always available with Node.js
+
+    try {
+      await execAsync(`which ${manager}`);
+    } catch {
+      logger.warn(`${manager} not found on server, installing globally...`);
+      try {
+        await execAsync(`npm install -g ${manager}`);
+        logger.info(`✅ ${manager} installed globally`);
+      } catch (installError: any) {
+        throw new AppError(
+          `Failed to install ${manager} globally: ${installError.stderr || installError.message}`,
+          500
+        );
+      }
+    }
+  }
+
   private async installDependencies(dir: string, manager: PackageManager): Promise<void> {
     logger.info(`Installing dependencies in ${dir} using ${manager}`);
-    
+
+    await this.ensurePackageManager(manager);
+
     // Install ALL dependencies including devDependencies (needed for build)
-    const installCmd = manager === 'npm' 
-      ? 'npm install --include=dev' 
+    const installCmd = manager === 'npm'
+      ? 'npm install --include=dev'
       : manager === 'yarn'
       ? 'yarn install'
       : 'pnpm install';
@@ -385,8 +411,9 @@ export class DeploymentService {
         logger.info(`Set ${Object.keys(options.envVars).length} environment variables`);
       }
 
-      // 10.6. Cleanup node_modules for React/Next.js projects to save disk space
-      if (type === 'react' || type === 'next') {
+      // 10.6. Cleanup node_modules for React projects to save disk space
+      // Next.js needs node_modules at runtime (next start requires the next binary)
+      if (type === 'react') {
         const nodeModulesPath = path.join(targetDir, 'node_modules');
         if (await fs.pathExists(nodeModulesPath)) {
           reportProgress('cleanup', 'Cleaning up build dependencies...', 78);
@@ -560,6 +587,7 @@ export class DeploymentService {
     const stagingDir = path.join(TEMP_DIR, deployId);
     let portAllocated = false;
     let newPort: number | null = null;
+    let deploymentRecordId: string | null = null;
 
     logger.info(`[Deploy:${projectName}] Starting pre-built deployment ${deployId}`);
 
@@ -605,9 +633,10 @@ export class DeploymentService {
         }
       }
 
-      // 3. Detect package manager
+      // 3. Detect package manager and ensure it's available
       const pkgManager = type !== 'static' ? await this.detectPackageManager(stagingDir) : 'npm';
       logger.info(`Detected package manager: ${pkgManager}`);
+      await this.ensurePackageManager(pkgManager);
 
       // 4. For Next.js and Node.js, install production dependencies only
       if (type !== 'react' && type !== 'static') {
@@ -685,6 +714,16 @@ export class DeploymentService {
         portAllocated = true;
         logger.info(`Allocated port ${port} for ${projectId}`);
       }
+
+      // 6.5. Record deployment in database
+      const deploymentRecord = deploymentRepository.create({
+        projectId,
+        buildMode: 'local',
+        deploymentSource,
+        envInjected: options.envInjected ?? false,
+      });
+      deploymentRecordId = deploymentRecord.id;
+      deploymentRepository.updateStatus(deploymentRecord.id, 'deploying');
 
       // 7. Stop existing process before directory swap
       if (existingProject && existingProject.type !== 'react' && existingProject.type !== 'static') {
@@ -801,6 +840,9 @@ export class DeploymentService {
 
       logger.info(`✅ Pre-built deployment successful for ${projectName} (${projectId})`);
 
+      // Record success in deployment history
+      deploymentRepository.updateStatus(deploymentRecordId, 'success');
+
       // Log activity
       await activityLogger.log('deploy', projectName,
         `Deployed ${projectName} (${type}) from pre-built artifacts${version ? ` v${version}` : ''}`);
@@ -822,6 +864,11 @@ export class DeploymentService {
         error: error.message,
         stack: error.stack
       });
+
+      // Record failure in deployment history
+      if (deploymentRecordId) {
+        try { deploymentRepository.updateStatus(deploymentRecordId, 'failed', error.message); } catch { /* ignore */ }
+      }
 
       await activityLogger.log('error', projectName,
         `Deployment failed: ${error.message}`);
@@ -1131,21 +1178,44 @@ export async function handleWebSocketDeployment(
       deploymentId: effectiveDeploymentId,
       mode,
       envVars,
+      deploymentSource: 'ui',
       onProgress: (step: string, message: string, progress: number) => {
         sendProgress(step, message, progress);
       }
     });
-    
+
+    // Record deployment success in database
+    const wsDeployRecord = deploymentRepository.create({
+      projectId: project.id,
+      buildMode: 'server',
+      deploymentSource: 'ui',
+    });
+    deploymentRepository.updateStatus(wsDeployRecord.id, 'success');
+
     sendProgress('complete', 'Deployment successful!', 100);
     sendSuccess(project);
-    
+
     // Cleanup temp file
     if (await fs.pathExists(tempFilePath)) {
       await fs.remove(tempFilePath);
     }
-    
+
   } catch (error: any) {
     logger.error('WebSocket deployment failed', error);
     sendError(error.message || 'Deployment failed');
+
+    // Record deployment failure in database (best-effort — projectId may not exist for new deploys)
+    try {
+      const allProjects = await projectRegistry.getAll();
+      const existing = allProjects.find(p => p.name === projectName);
+      if (existing) {
+        const failRecord = deploymentRepository.create({
+          projectId: existing.id,
+          buildMode: 'server',
+          deploymentSource: 'ui',
+        });
+        deploymentRepository.updateStatus(failRecord.id, 'failed', error.message || 'Deployment failed');
+      }
+    } catch { /* ignore — deployment recording is best-effort */ }
   }
 }

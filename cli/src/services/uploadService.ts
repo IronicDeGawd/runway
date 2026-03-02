@@ -22,6 +22,8 @@ export interface UploadResult {
   projectId?: string;
   deploymentId?: string;
   error?: string;
+  /** True when file bytes were fully sent but the server response timed out */
+  uploadCompleted?: boolean;
 }
 
 export interface DeploymentStatus {
@@ -121,6 +123,8 @@ export class UploadService {
 
     logger.info(`Uploading to ${this.serverUrl}${endpoint}...`);
 
+    let uploadCompleted = false;
+
     try {
       const response = await axios.post(
         `${this.serverUrl}${endpoint}`,
@@ -132,10 +136,13 @@ export class UploadService {
           },
           maxBodyLength: Infinity,
           maxContentLength: Infinity,
-          timeout: 300000, // 5 minutes
+          timeout: 600000, // 10 minutes
           onUploadProgress: (progressEvent: AxiosProgressEvent) => {
             if (progressEvent.total) {
               const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              if (percent >= 100) {
+                uploadCompleted = true;
+              }
               process.stdout.write(`\r  Uploading: ${percent}%`);
             }
           },
@@ -163,12 +170,14 @@ export class UploadService {
         const message = error.response?.data?.error || error.message;
         return {
           success: false,
+          uploadCompleted,
           error: `Upload failed: ${message}`,
         };
       }
 
       return {
         success: false,
+        uploadCompleted,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
     }

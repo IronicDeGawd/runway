@@ -319,6 +319,12 @@ export async function deployCommand(options: DeployOptions): Promise<void> {
   packageService.cleanup(packageResult.zipPath);
 
   if (!uploadResult.success) {
+    if (uploadResult.uploadCompleted) {
+      logger.warn('Server is still processing the deployment.');
+      logger.info(`Check status with: runway status ${projectName}`);
+      logger.blank();
+      return;
+    }
     logger.error(`Upload failed: ${uploadResult.error}`);
     return;
   }

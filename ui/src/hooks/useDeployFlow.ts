@@ -274,13 +274,13 @@ export function useDeployFlow() {
              }
            }, 2000);
 
-           // Stop polling after 60s
+           // Stop polling after 10 minutes (server deployments can take a while)
            pollTimeoutRef.current = setTimeout(() => {
              if (pollIntervalRef.current) {
                clearInterval(pollIntervalRef.current);
                pollIntervalRef.current = null;
              }
-           }, 60000);
+           }, 600000);
         }
 
         wsRef.current = null;
