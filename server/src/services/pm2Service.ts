@@ -314,6 +314,22 @@ export class PM2Service {
 
   async getProcesses(): Promise<any[]> {
     try {
+      // Timeout to prevent hanging when PM2 daemon is unresponsive
+      const result = await Promise.race([
+        this.getProcessesInner(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('PM2 list timed out after 10s')), 10000)
+        ),
+      ]);
+      return result;
+    } catch (error: any) {
+      logger.error('Failed to list processes:', error?.message || error);
+      return [];
+    }
+  }
+
+  private async getProcessesInner(): Promise<any[]> {
+    try {
       await this.connect();
       const list = await this.list();
       return list.map((p: any) => ({
@@ -324,9 +340,6 @@ export class PM2Service {
         cpu: p.monit.cpu,
         memory: p.monit.memory,
       }));
-    } catch (error: any) {
-      logger.error('Failed to list processes:', error?.message || error);
-      return [];
     } finally {
       await this.disconnect();
     }

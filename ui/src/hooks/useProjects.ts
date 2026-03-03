@@ -67,13 +67,17 @@ export function useProjects() {
     // Merge Data
     const projects: Project[] = (projectsData || []).map(p => {
         const process = (processesData || []).find(proc => proc.name === p.id);
-        const status = process ? (process.status === 'online' ? 'running' : process.status) : 'stopped';
-        
-        // Map pm2 status to UI status
+        // Use process data if available, otherwise fall back to project API status
+        const rawStatus = process
+            ? (process.status === 'online' ? 'running' : process.status)
+            : (p as any).status || 'stopped';
+
+        // Map status to UI status
         let uiStatus: Project['status'] = 'stopped';
-        if (status === 'online' || status === 'running') uiStatus = 'running';
-        if (status === 'errored') uiStatus = 'failed';
-        if (status === 'launching') uiStatus = 'building';
+        if (rawStatus === 'online' || rawStatus === 'running') uiStatus = 'running';
+        if (rawStatus === 'errored' || rawStatus === 'failed') uiStatus = 'failed';
+        if (rawStatus === 'launching' || rawStatus === 'building' || rawStatus === 'deploying') uiStatus = 'building';
+        if (rawStatus === 'waiting restart') uiStatus = 'failed';
 
         // Get server IP from window location
         const serverHost = window.location.hostname;

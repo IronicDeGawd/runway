@@ -121,7 +121,7 @@ if (typeof window !== 'undefined' && !window.import) {
     const staticProcesses: any[] = [];
     
     for (const project of projects) {
-      if (project.type !== 'react') continue;
+      if (project.type !== 'react' && project.type !== 'static') continue;
 
       const configPath = caddyConfigManager.getProjectConfigPath(project.id);
       const isRunning = await fs.pathExists(configPath);

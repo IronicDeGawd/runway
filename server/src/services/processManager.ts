@@ -48,14 +48,17 @@ export class ProcessManager {
    */
   async getProcesses(): Promise<any[]> {
     try {
-      // 1. Get PM2 processes
-      const pm2List = await pm2Service.getProcesses();
-      
-      // 2. Get Static processes
       const allProjects = await projectRegistry.getAll();
-      const staticList = await staticProcessService.getProcesses(allProjects);
-      
-      // 3. Merge
+
+      // Fetch PM2 and static statuses in parallel; PM2 failure shouldn't block static
+      const [pm2List, staticList] = await Promise.all([
+        pm2Service.getProcesses().catch(error => {
+          logger.error('PM2 process list failed, returning empty:', error);
+          return [];
+        }),
+        staticProcessService.getProcesses(allProjects),
+      ]);
+
       return [...pm2List, ...staticList];
     } catch (error) {
       logger.error('Failed to get unified process list', error);
