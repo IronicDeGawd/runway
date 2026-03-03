@@ -715,16 +715,6 @@ export class DeploymentService {
         logger.info(`Allocated port ${port} for ${projectId}`);
       }
 
-      // 6.5. Record deployment in database
-      const deploymentRecord = deploymentRepository.create({
-        projectId,
-        buildMode: 'local',
-        deploymentSource,
-        envInjected: options.envInjected ?? false,
-      });
-      deploymentRecordId = deploymentRecord.id;
-      deploymentRepository.updateStatus(deploymentRecord.id, 'deploying');
-
       // 7. Stop existing process before directory swap
       if (existingProject && existingProject.type !== 'react' && existingProject.type !== 'static') {
         await pm2Service.stopProject(projectId);
@@ -807,6 +797,20 @@ export class DeploymentService {
       }
       logger.info('✅ Project registered');
 
+      // 9.5. Record deployment in database (after project exists to satisfy FK)
+      try {
+        const deploymentRecord = deploymentRepository.create({
+          projectId,
+          buildMode: 'local',
+          deploymentSource,
+          envInjected: options.envInjected ?? false,
+        });
+        deploymentRecordId = deploymentRecord.id;
+        deploymentRepository.updateStatus(deploymentRecord.id, 'deploying');
+      } catch (dbError: any) {
+        logger.warn('Failed to record deployment in database:', dbError.message);
+      }
+
       // 10. Start PM2 process (if not static site)
       if (type !== 'react' && type !== 'static') {
         // Inject PORT so apps using process.env.PORT bind to the correct allocated port
@@ -841,7 +845,9 @@ export class DeploymentService {
       logger.info(`✅ Pre-built deployment successful for ${projectName} (${projectId})`);
 
       // Record success in deployment history
-      deploymentRepository.updateStatus(deploymentRecordId, 'success');
+      if (deploymentRecordId) {
+        try { deploymentRepository.updateStatus(deploymentRecordId, 'success'); } catch { /* ignore */ }
+      }
 
       // Log activity
       await activityLogger.log('deploy', projectName,
